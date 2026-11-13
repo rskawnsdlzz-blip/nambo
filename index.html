@@ -21,7 +21,7 @@
   --bg:#EEF1F5; --surface:#FFFFFF; --surface2:#F6F8FB; --ink:#16212E; --muted:#556375; --faint:#8A97A6;
   --line:#C3CCD7; --line-strong:#8E9BAA; --head:#22344A; --head-ink:#FFFFFF;
   --accent:#2B66A8; --accent-ink:#FFFFFF; --accent-soft:#E2ECF7;
-  --income:#1D7550; --expense:#B03F2C; --save:#2B66A8; --event:#C98A3A; --repay:#6B5BA6;
+  --pteal:#2A8C8C; --income:#1D7550; --expense:#B03F2C; --save:#2B66A8; --event:#C98A3A; --repay:#6B5BA6;
   --auto-bg:#E5EDF7; --auto-ink:#24497A; --warn:#9A5B00; --warn-bg:#FFF2D6; --bad:#B42318; --bad-bg:#FDECEA; --ok:#1D7550; --ok-bg:#E3F3EA;
   --field:#FFFDF5; --total:#DCE4EE; --hl:#FFF4C9;
   --who-a-bg:#DDEFF3; --who-a:#165C6E; --who-b-bg:#F7E4EE; --who-b:#8A2F5E; --who-j-bg:#ECEAF3; --who-j:#4E4A66;
@@ -33,14 +33,14 @@
   --bg:#0F151C; --surface:#18212B; --surface2:#1E2834; --ink:#E6ECF2; --muted:#A3B0BE; --faint:#77879A;
   --line:#34424F; --line-strong:#56677A; --head:#2C4058; --head-ink:#F2F6FA;
   --accent:#6FA6E6; --accent-ink:#0F151C; --accent-soft:#1F3247;
-  --income:#55C493; --expense:#F08472; --save:#6FA6E6; --event:#E3AE62; --repay:#A796E0;
+  --pteal:#5CC2C2; --income:#55C493; --expense:#F08472; --save:#6FA6E6; --event:#E3AE62; --repay:#A796E0;
   --auto-bg:#1F3247; --auto-ink:#B8D3F2; --warn:#F2B654; --warn-bg:#3A2E12; --bad:#FF8A7A; --bad-bg:#3D1E1A; --ok:#55C493; --ok-bg:#16352A;
   --field:#141C25; --total:#25374B; --hl:#3A3415; --who-a-bg:#173A44; --who-a:#9FD8E6; --who-b-bg:#43203A; --who-b:#F2B6D3; --who-j-bg:#2C2A3A; --who-j:#C9C4E0; color-scheme:dark;}}
 :root[data-theme="dark"]{
   --bg:#0F151C; --surface:#18212B; --surface2:#1E2834; --ink:#E6ECF2; --muted:#A3B0BE; --faint:#77879A;
   --line:#34424F; --line-strong:#56677A; --head:#2C4058; --head-ink:#F2F6FA;
   --accent:#6FA6E6; --accent-ink:#0F151C; --accent-soft:#1F3247;
-  --income:#55C493; --expense:#F08472; --save:#6FA6E6; --event:#E3AE62; --repay:#A796E0;
+  --pteal:#5CC2C2; --income:#55C493; --expense:#F08472; --save:#6FA6E6; --event:#E3AE62; --repay:#A796E0;
   --auto-bg:#1F3247; --auto-ink:#B8D3F2; --warn:#F2B654; --warn-bg:#3A2E12; --bad:#FF8A7A; --bad-bg:#3D1E1A; --ok:#55C493; --ok-bg:#16352A;
   --field:#141C25; --total:#25374B; --hl:#3A3415; --who-a-bg:#173A44; --who-a:#9FD8E6; --who-b-bg:#43203A; --who-b:#F2B6D3; --who-j-bg:#2C2A3A; --who-j:#C9C4E0; color-scheme:dark;}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -341,6 +341,20 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:1140px
 .grid tr.bad td.st{color:var(--bad);font-weight:600}
 .grid tr.ok td.st{color:var(--ok);font-weight:600}
 .grid tr.dup td{background:#FFF6DC}
+.pies{display:grid;grid-template-columns:1fr;gap:0}
+@media (min-width:760px){.pies{grid-template-columns:1fr 1fr}.pies>.pie+.pie{border-left:1px solid var(--line)}}
+@media (max-width:759px){.pies>.pie+.pie{border-top:1px solid var(--line)}}
+.pie{padding:16px;display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.pie h3{font-size:14px;margin:0 0 10px;width:100%;color:var(--muted);font-weight:600}
+.pie svg{width:168px;height:168px;flex:none}
+.pie .pc-t{font-size:11px;fill:var(--muted)}.pie .pc-v{font-size:17px;font-weight:700;fill:var(--ink)}
+.plg{flex:1;min-width:190px;display:flex;flex-direction:column;gap:7px;font-size:14px}
+.plg div{display:grid;grid-template-columns:12px 1fr auto 46px;gap:8px;align-items:center}
+.plg i{width:12px;height:12px;border-radius:3px;display:block}
+.plg .n{font-variant-numeric:tabular-nums;text-align:right;font-weight:600}
+.plg .p{font-variant-numeric:tabular-nums;text-align:right;color:var(--muted);font-size:13px}
+.plg .s{grid-column:2/-1;color:var(--muted);font-size:12px;margin-top:-5px}
+.pie .pnote{width:100%;font-size:12.5px;color:var(--muted);margin:0}
 .grid tr.dup td.st{color:#8A5A00;font-weight:600}
 .dupwarn{border:1.5px solid #E0B44C;background:#FFF6DC;color:#5C3D00;border-radius:10px;padding:10px 12px;font-size:13.5px;margin-top:10px;line-height:1.5}
 .grid td.del{background:var(--surface);width:34px;text-align:center}
@@ -1592,6 +1606,32 @@ function openParent(e,preset){
 }
 
 /* ---------- 화면: 자산 ---------- */
+/* 자산 원그래프 */
+const AGROUPS=[['예금·적금',/예금|입출|적금|현금|cma|파킹|청년|통장/i,'var(--save)'],['투자',/투자|주식|펀드|etf|코인|연금|isa|채권/i,'var(--repay)'],['부동산',/부동산|아파트|주택|보증금|토지|오피스텔|빌라/i,'var(--event)'],['부모님 예치',/부모님/,'var(--pteal)']];
+function aGroup(kind){for(const [n,re,c] of AGROUPS)if(re.test(kind||''))return {n,c};return {n:'기타',c:'var(--faint)'}}
+function donutSvg(segs,label,value){
+  const R=62,C=2*Math.PI*R,tot=segs.reduce((s,x)=>s+x.v,0);let off=0;const gap=segs.filter(x=>x.v>0).length>1?2:0;
+  const arcs=tot>0?segs.filter(x=>x.v>0).map(x=>{const len=x.v/tot*C;const a=`<circle cx="84" cy="84" r="${R}" fill="none" style="stroke:${x.c}" stroke-width="26" stroke-dasharray="${Math.max(len-gap,0.5)} ${C}" stroke-dashoffset="${-off}" transform="rotate(-90 84 84)"><title>${esc(x.n)} ${won(x.v)}원</title></circle>`;off+=len;return a}).join(''):`<circle cx="84" cy="84" r="${R}" fill="none" stroke="var(--line)" stroke-width="26"/>`;
+  return `<svg viewBox="0 0 168 168" role="img" aria-label="${esc(label)}">${arcs}<text x="84" y="78" text-anchor="middle" class="pc-t">${esc(label)}</text><text x="84" y="98" text-anchor="middle" class="pc-v">${value}</text></svg>`;
+}
+const eok=v=>{const a=Math.abs(v),sg=v<0?'−':'';if(a>=1e8){const e=Math.floor(a/1e8),m=Math.round((a%1e8)/1e4);return `${sg}${e}억${m?` ${won(m)}만`:''}`}return `${sg}${won(Math.round(a/1e4))}만`};
+const ppct=(v,t)=>t>0?`${(v/t*100).toFixed(v/t<0.1?1:0)}%`:'–';
+function legend(segs,tot){return `<div class="plg">${segs.map(x=>`<div><i style="background:${x.c}"></i><span>${esc(x.n)}</span><span class="n">${eok(x.v)}</span><span class="p">${ppct(x.v,tot)}</span>${x.sub?`<span class="s">${esc(x.sub)}</span>`:''}</div>`).join('')}</div>`}
+function assetPies(rows,totA,totD){
+  const cNet='var(--income)',cDebt='var(--expense)';
+  const net=totA-totD;
+  const s1=[{n:'순자산',v:Math.max(net,0),c:cNet},{n:'부채',v:totD,c:cDebt}];
+  const by=new Map();rows.forEach(a=>{const v=+a.amount||0;if(v<=0)return;const g=a.auto?{n:'부모님 예치',c:'var(--pteal)'}:aGroup(a.kind);const o=by.get(g.n)||{n:g.n,v:0,c:g.c,items:[]};o.v+=v;o.items.push(a.name||a.kind);by.set(g.n,o)});
+  let s2=[...by.values()];let note='';
+  if(totD>0){const re=by.get('부동산');
+    if(re&&re.v>=totD){re.gross=re.v;re.v-=totD;re.sub=`${eok(re.gross)} − 부채 ${eok(totD)}`;re.n='부동산 (대출 제외)'}
+    else note='부채가 부동산보다 많아 부채를 뺀 순자산 구성은 대략적으로만 보여 줍니다(부채는 빼지 않음).'}
+  s2=s2.filter(x=>x.v>0).sort((a,b)=>b.v-a.v);
+  const t2=s2.reduce((s,x)=>s+x.v,0);
+  const one=`<div class="pie"><h3>총자산 ${eok(totA)} = 순자산 + 부채</h3>${donutSvg(s1,'총자산',eok(totA))}${legend(s1,totA)}</div>`;
+  const two=`<div class="pie"><h3>순자산 구성 — 어디에 있나</h3>${donutSvg(s2,note?'자산':'순자산',eok(t2))}${legend(s2,t2)}${note?`<p class="pnote">${esc(note)}</p>`:by.get('부동산')?.gross!=null?'<p class="pnote">부동산은 대출을 뺀 금액(내 몫)으로 넣었습니다.</p>':''}</div>`;
+  return totA>0?`<section class="card"><div class="card-h"><h2>한눈에 보기</h2></div><div class="pies">${one}${two}</div></section>`:'';
+}
 function vAssets(){
   const endD=(()=>{const y=Math.floor(curM/100),m=curM%100;const d=new Date(y,m,0);return `${y}-${String(m).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
   const p=parentsMonth(S,curM);const td=todayIso();
@@ -1603,6 +1643,7 @@ function vAssets(){
   const missA=rows.filter(a=>!a.auto&&(a.amount==null||a.amount==='')).length;
   return `<div class="stack">${banners()}<div><div class="eyebrow">자산현황 · ${mLabel(curM)} 말 기준</div><h1>총자산 · 총부채 · 순자산</h1><p class="sub">직접 입력한 금액은 <b>기준일</b>의 잔액입니다. 은행·증권 앱에서 확인한 날짜와 함께 갱신하세요.</p></div>
   <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">${kpi('총자산',won(totA),missA?`금액 미입력 ${missA}건 제외`:'자동 + 직접 입력','--income')}${kpi('총부채',won(totD),'대출 추정 잔액','--expense')}${kpi('순자산',won(totA-totD),'총자산 − 총부채',null,true)}</div>
+  ${assetPies(rows,totA,totD)}
   <section class="card"><div class="card-h"><h2>자산</h2><span class="spacer"></span><button class="btn small primary" id="aAdd" ${canWrite?'':'disabled'}>+ 자산</button></div><div class="card-b flush tw"><table class="tbl"><thead><tr><th>구분</th><th>항목</th><th>소유</th><th>금액(원)</th><th>기준일</th><th>상태</th></tr></thead><tbody>
   ${rows.map(a=>`<tr class="${a.auto?'':'click'}" ${a.auto?'':`data-aedit="${a.id}" tabindex="0"`}><td class="c">${esc(a.kind)}</td><td class="rowh">${esc(a.name)}</td><td class="c">${esc(uname(a.owner))}</td><td class="n">${a.amount===''||a.amount==null?'–':won(a.amount)}</td><td class="c mono" style="font-size:13px">${esc(a.asOf||'–')}</td><td class="c">${stale(a)}</td></tr>`).join('')}
   <tr class="total"><td colspan="3">자산 합계</td><td class="n">${won(totA)}</td><td colspan="2"></td></tr></tbody></table></div></section>
