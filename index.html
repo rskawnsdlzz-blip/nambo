@@ -187,6 +187,9 @@ h2{font-size:16.5px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .blist li>b{white-space:nowrap}
 .bdl dt{word-break:keep-all}
 @media (max-width:560px){.bdl{grid-template-columns:1fr}.bdl dt{border-right:0;padding:6px 12px;font-size:12.5px;color:var(--muted)}.bdl dd{padding-top:7px}}
+.consult{display:flex;justify-content:flex-end;margin-top:-4px}
+.consultbtn{border:0;background:none;padding:4px 2px;font-size:12px;color:var(--faint);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.consultbtn:hover{color:var(--muted)}
 .bonus-line{grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-top:6px;border-top:1px dashed var(--line)}
 .bonus-line .inp{width:auto;min-height:38px;font-size:15px}
 .bonus-line select.inp{max-width:160px}
@@ -850,6 +853,77 @@ function openTx(t){
 }
 
 /* ---------- 화면: 요약 ---------- */
+/* ---------- 상담용 요약 (Claude 대화에 붙여넣기) ---------- */
+function consultText(range,detail){
+  const end=curM,start0=minM()||dataMonths(S)[0]||curM;let months=[];
+  if(range==='cur')months=[end];
+  else if(range==='3m'){for(let i=2;i>=0;i--){const k=addM(end,-i);if(k>=start0)months.push(k)}}
+  else for(let k=Math.min(start0,end);k<=end;k=addM(k,1))months.push(k);
+  if(!months.length)months=[end];
+  const A=months.map(m=>agg(S,m)),nm=A.length,W=v=>won(v),L=[];
+  const sumF=f=>A.reduce((s,a)=>s+f(a),0),avg=v=>W(Math.round(v/nm));
+  const bonusSet=new Set(S.settings.cats.bonus||[]),extraSet=new Set(S.settings.cats.extraIncome||[]);
+  const baseInc=a=>Object.entries(a.incCats).filter(([n])=>!bonusSet.has(n)&&!extraSet.has(n)).reduce((s,[,v])=>s+v,0);
+  L.push('[우리집 가계부 상담용 요약]');
+  L.push(`작성일 ${todayIso()} · 기간 ${mIso(months[0])} ~ ${mIso(months[nm-1])} (${nm}개월) · 금액 단위: 원`);
+  L.push(`가구: ${uname('A')}·${uname('B')} 부부 (2026년 9월 결혼) · 가계부 시작 ${mIso(minM()||months[0])}`);
+  L.push('잔여 = 수입 − 지출 − 저축·투자 − 대출원금 상환 (통장 잔액 아님). 내부이체·카드대금 출금은 제외됨.');
+  L.push('','■ 월별 흐름','월 | 수입 | └기본 | └상여 | └추가소득 | 지출 | └고정 | └변동 | └이벤트 | 저축·투자 | 원금상환 | 잔여 | 저축률 | 기록 상태');
+  const row=(lab,f)=>[lab,f(a=>a.inc.T),f(baseInc),f(a=>a.bonus.T),f(a=>a.extra.T),f(a=>a.exp.T),f(a=>a.fixed),f(a=>a.variable),f(a=>a.event),f(a=>a.sav.T),f(a=>a.rep.T),f(a=>a.rest)];
+  A.forEach(a=>L.push([...row(mIso(a.m),g=>W(g(a))),pct(a.saveRate),a.empty?'기록 없음':(a.r.missing.length?`미입력 ${a.r.missing.length}건`:'입력 완료')].join(' | ')));
+  if(nm>1){const ti=sumF(a=>a.inc.T),ts=sumF(a=>a.sav.T);L.push([...row('합계',g=>W(sumF(g))),ti?pct(ts/ti):'–',''].join(' | '));L.push([...row('월평균',g=>avg(sumF(g))),'',''].join(' | '))}
+  // 일상 지출 카테고리
+  const dailyT=sumF(a=>a.daily),cat={};A.forEach(a=>Object.entries(a.expCats).forEach(([n,v])=>cat[n]=(cat[n]||0)+v));
+  const groups=expGroups(S.settings.cats.expense),known=new Set(groups.flatMap(g=>g[1])),other=Object.keys(cat).filter(n=>!known.has(n));if(other.length)groups.push(['기타',other]);
+  L.push('',`■ 일상 지출 카테고리 (기간 합계 ${W(dailyT)} · 월평균 · 비중)`);
+  for(const[g,names]of groups){const rows=names.filter(n=>cat[n]).sort((x,y)=>cat[y]-cat[x]);if(!rows.length)continue;const gt=rows.reduce((s,n)=>s+cat[n],0);
+    L.push(`${g||'지출'} ${W(gt)} (${pct(gt/(dailyT||1))})`);rows.forEach(n=>L.push(`  - ${n}: ${W(cat[n])} · 월평균 ${avg(cat[n])} · ${pct(cat[n]/(dailyT||1))}`))}
+  const ev={};A.forEach(a=>Object.entries(a.evByEvent).forEach(([k,v])=>ev[k]=(ev[k]||0)+v));
+  if(Object.keys(ev).length){L.push('','■ 이벤트 지출 (일상 생활비와 별도 집계)');Object.entries(ev).forEach(([k,v])=>L.push(`  - ${k}: ${W(v)}`))}
+  const big=S.tx.filter(t=>t.type==='지출'&&months.includes(t.month)&&+t.amount>=300000).sort((x,y)=>y.amount-x.amount);
+  if(big.length){L.push('','■ 큰 지출 (30만 원 이상)');big.forEach(t=>L.push(`  - ${t.date} ${t.item||t.cat} (${t.cat}${t.event&&t.event!=='일상'?', '+t.event:''}) ${W(t.amount)} · ${uname(t.user)}${t.memo?` · 메모: ${String(t.memo).slice(0,90)}`:''}`))}
+  // 수입
+  const inc={};A.forEach(a=>a.r.entries.filter(e=>e.type==='수입').forEach(e=>{const o=inc[e.cat]||(inc[e.cat]={A:0,B:0,J:0,T:0});o.T+=e.amount;if(o[e.user]!=null)o[e.user]+=e.amount}));
+  L.push('','■ 수입 상세 (기간 합계)');
+  Object.entries(inc).sort((x,y)=>y[1].T-x[1].T).forEach(([k,o])=>L.push(`  - ${k}${bonusSet.has(k)?' (상여)':extraSet.has(k)?' (추가 소득)':''}: ${W(o.T)} (${uname('A')} ${W(o.A)} / ${uname('B')} ${W(o.B)}${o.J?` / 공동 ${W(o.J)}`:''})`));
+  if(!Object.keys(inc).length)L.push('  - 기록 없음');
+  const sv={};A.forEach(a=>Object.entries(a.savCats).forEach(([k,v])=>sv[k]=(sv[k]||0)+v));
+  L.push('','■ 저축·투자 (기간 합계)');
+  if(Object.keys(sv).length)Object.entries(sv).sort((x,y)=>y[1]-x[1]).forEach(([k,v])=>L.push(`  - ${k}: ${W(v)}`));else L.push('  - 기록 없음 (실제로 안 한 것인지, 기록만 안 한 것인지 확인 필요)');
+  // 고정·할부
+  L.push('',`■ 고정 지출·구독·할부 (${mIso(end)} 기준 자동 반영 항목)`);
+  let fixT=0;const ending=[];
+  fixedGroups().forEach(g=>{const c=g.find(f=>active(f,end));if(!c)return;const ii=instInfo(c,end);if(c.type==='지출')fixT+=+c.amount;
+    L.push(`  - ${c.name}: ${W(c.amount)} · ${c.type}/${c.cat} · ${uname(c.user)}${c.day?` · 매월 ${c.day}일`:''}${ii?` · 할부 ${ii.n}/${ii.tot}회, ${mIso(ii.end)} 종료`:c.end?` · ${mIso(c.end)} 종료`:''}`);
+    const e=ii?ii.end:c.end;if(e&&e<=addM(end,12))ending.push([e,c])});
+  L.push(`  지출 합계: 월 ${W(fixT)}`);
+  if(ending.length)L.push('  12개월 안에 끝나는 항목: '+ending.sort((x,y)=>x[0]-y[0]).map(([e,c])=>`${c.name} ${mIso(e)} (월 ${W(c.amount)})`).join(', '));
+  const items=S.monthly.filter(it=>months.some(m=>active(it,m)));
+  if(items.length){L.push('','■ 매달 입력 항목 (월별 실제 금액, - = 미입력, · = 기간 아님)','항목 | '+months.map(mIso).join(' | '));
+    items.forEach(it=>L.push(`${it.name} (${it.type}/${it.cat}) | `+A.map(a=>{if(!active(it,a.m))return '·';const e=a.r.entered.find(x=>x.it.id===it.id);return e?W(e.amount):'-'}).join(' | ')))}
+  // 자산·부채
+  L.push('',`■ 자산·부채 (${mIso(end)} 말 기준)`);
+  const pm=parentsMonth(S,end);
+  L.push(`  - 부모님 예치 원금 ${W(pm.held)} · 월 이율 ${(S.settings.parents.rate*100).toFixed(2)}% · ${mIso(end)} 이자 ${W(pm.counted)}${pm.actual==null?' (예상치)':' (실제 수령)'} · 담당 ${uname(S.settings.parents.person)}`);
+  if(S.assets.length)S.assets.forEach(x=>L.push(`  - ${x.kind} ${x.name} (${uname(x.owner)}): ${x.amount==null||x.amount===''?'금액 미입력':W(x.amount)} · 기준일 ${x.asOf||'없음'}`));else L.push('  - 예금·적금·투자 잔액: 앱에 미입력');
+  if(S.debts.length)S.debts.forEach(d=>{const e=debtEstimate(S,d,end);L.push(`  - [부채] ${d.name}: 기준 잔액 ${d.base==null?'-':W(d.base)} (${d.asOf||'기준일 없음'}) → 추정 ${e?W(e.est):'-'}`)});else L.push('  - 부채 잔액: 앱에 미입력');
+  const chk=[];A.forEach(a=>{if(a.empty)chk.push(`${mIso(a.m)} 기록 없음`);else if(a.r.missing.length)chk.push(`${mIso(a.m)} 미입력: ${a.r.missing.map(x=>x.name).join(', ')}`);if(a.provisional)chk.push(`${mIso(a.m)} 예상치로 계산 ${a.provisional}건`)});
+  if(chk.length){L.push('','■ 확인 필요');chk.forEach(c=>L.push('  - '+c))}
+  if(detail){const list=S.tx.filter(t=>months.includes(t.month)).sort((x,y)=>(x.date||'').localeCompare(y.date||''));
+    L.push('',`■ 거래 목록 (직접 입력분 ${list.length}건, 날짜순)`,'날짜 | 구분 | 카테고리 | 사용처 | 금액 | 사람 | 이벤트');
+    list.forEach(t=>L.push([t.date,t.type,t.cat,t.item||'',W(t.amount),uname(t.user),t.event||'일상'].join(' | ')))}
+  L.push('','※ 앱에 없는 정보(대출 금리·남은 기간·상환 방식, 부모님 예치 조건, 저축 목표 등)는 대화에서 따로 알려 드립니다.');
+  return L.join('\n');
+}
+function openConsult(){
+  const fb=()=>{const ta=$('#consultTxt');if(ta){ta.focus();ta.select()}toast('자동 복사가 막혀 있습니다. 선택된 글자를 복사(Ctrl+C 또는 길게 눌러 복사)하세요');throw new Error('clip')};
+  openSheet({title:'상담용 요약 복사',values:{range:'3m',detail:''},saveLabel:'복사',savedMsg:'복사했습니다. Claude 대화창에 붙여넣으세요',
+    intro:'Claude와 재테크 상담할 때 대화창에 붙여넣는 숫자 요약입니다. 이메일·비밀번호는 들어가지 않습니다.',
+    fields:[{k:'range',label:'기간',type:'seg',full:true,options:[['cur',`${curM%100}월만`],['3m','최근 3개월'],['all','시작월부터 전체']]},
+            {k:'detail',label:'거래 목록',type:'seg',full:true,options:[['','숫자 요약만'],['1','거래 한 줄씩 포함']]}],
+    extra:v=>{const t=consultText(v.range,v.detail);return `<div class="fld" style="margin-top:12px"><label for="consultTxt">미리보기 · ${t.length.toLocaleString()}자</label><textarea id="consultTxt" class="inp" readonly rows="12" style="font-family:var(--f-num);font-size:12px;line-height:1.5;white-space:pre">${esc(t)}</textarea></div>`},
+    onSave:v=>{const t=consultText(v.range,v.detail);try{if(!navigator.clipboard)return fb();return navigator.clipboard.writeText(t).catch(fb)}catch(e){return fb()}}});
+}
 function vSummary(){
   const a=agg(S,curM),p=aggM(addM(curM,-1));const r=a.r;
   const d=(x,y)=>p.empty&&!y?'전월 기록 없음':`전월 대비 ${sgn(x-y)}`;
@@ -884,6 +958,7 @@ function vSummary(){
   h+=trendCard(curM);
   h+=`<div class="grid2">${detailCard('수입 상세',a.incCats,p.incCats,a.inc.T)}${detailCard('저축·투자 상세',a.savCats,p.savCats,a.sav.T)}</div>`;
   if(a.rep.T||p.rep.T)h+=`<div class="grid2">${detailCard('대출원금 상환 상세',a.repCats,p.repCats,a.rep.T)}<div></div></div>`;
+  h+=`<div class="consult"><button type="button" class="consultbtn" id="consultBtn">상담용 요약 복사</button></div>`;
   h+=`</div>`;
   return h;
 }
@@ -1043,12 +1118,12 @@ function detailCard(title,cur,prev,tot){
 }
 function niceStep(x){if(x<=0)return 1;const e=Math.pow(10,Math.floor(Math.log10(x)));const f=x/e;return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*e}
 function trendCard(m){
-  const ms=[];for(let i=11;i>=0;i--)ms.push(addM(m,-i));
+  const ms=[];for(let i=11;i>=0;i--){const k=addM(m,-i);if(!minM()||k>=minM())ms.push(k)}
   const first=Math.max(dataMonths(S)[0]||0,minM())||undefined;
   const as=ms.map(k=>({m:k,a:(first&&k>=first)?agg(S,k):null}));
   const vals=as.flatMap(x=>x.a?[x.a.inc.T,x.a.exp.T,x.a.sav.T]:[]);
   const max=Math.max(1,...vals);const step=niceStep(max/4);const top=Math.ceil(max/step)*step;
-  const W=720,H=240,L=58,R=8,T=12,B=28;const cw=(W-L-R)/12;const bw=Math.min(14,cw/4.2);
+  const W=720,H=240,L=58,R=8,T=12,B=28;const cw=(W-L-R)/Math.max(ms.length,6);const bw=Math.min(16,cw/4.2);
   const y=v=>T+(H-T-B)*(1-v/top);
   let g='';
   for(let v=0;v<=top+1;v+=step){g+=`<line class="ax" x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}"/><text class="tx" x="${L-6}" y="${y(v)+4}" text-anchor="end">${v>=1e8?(v/1e8).toFixed(v%1e8?1:0)+'억':v>=1e4?Math.round(v/1e4).toLocaleString()+'만':v}</text>`}
@@ -1065,7 +1140,7 @@ function trendCard(m){
     g+=bar('c-sv',cx+bw/2+1,0,a.sav.T,mLabel(x.m)+' 저축·투자');
   });
   const rows=as.filter(x=>x.a).slice(-6);
-  return `<section class="card"><div class="card-h"><h2>최근 12개월 추이</h2><span class="spacer"></span><div class="legend"><span><i style="background:var(--income)"></i>수입</span><span><i style="background:var(--expense)"></i>일상 생활비</span><span><i style="background:var(--event)"></i>이벤트 지출</span><span><i style="background:var(--save)"></i>저축·투자</span></div></div>
+  return `<section class="card"><div class="card-h"><h2>월별 추이</h2><span class="sub">최근 12개월</span><span class="spacer"></span><div class="legend"><span><i style="background:var(--income)"></i>수입</span><span><i style="background:var(--expense)"></i>일상 생활비</span><span><i style="background:var(--event)"></i>이벤트 지출</span><span><i style="background:var(--save)"></i>저축·투자</span></div></div>
   <div class="card-b chart"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="최근 12개월 수입, 지출, 저축 막대 그래프">${g}</svg></div>
   <div class="card-b flush tw" style="border-top:1px solid var(--line)"><table class="tbl"><thead><tr><th>월</th><th>상태</th><th>수입</th><th>추가 소득</th><th>일상 생활비</th><th>이벤트 지출</th><th>저축·투자</th><th>잔여 금액</th><th>저축률</th></tr></thead><tbody>
   ${rows.length?rows.map(x=>{const a=x.a;return `<tr${x.m===m?' class="hl"':''}><td class="c mono">${mShort(x.m)}</td><td class="c">${a.empty?'<span class="badge b-plain">기록 없음</span>':a.r.missing.length?'<span class="badge b-warn">미입력 '+a.r.missing.length+'</span>':'<span class="badge b-ok">입력</span>'}</td><td class="n">${won(a.inc.T)}</td><td class="n">${won(a.extra.T)}</td><td class="n">${won(a.daily)}</td><td class="n">${won(a.event)}</td><td class="n">${won(a.sav.T)}</td><td class="n"><b>${won(a.rest)}</b></td><td class="n">${pct(a.saveRate)}</td></tr>`}).join(''):`<tr><td colspan="9" class="c" style="color:var(--muted)">기록이 쌓이면 월별 표가 표시됩니다</td></tr>`}
@@ -1714,6 +1789,7 @@ function bindCommon(v){
   v.querySelectorAll('[data-goto="monthly"]').forEach(b=>b.onclick=e=>{e.preventDefault();addModeMem='monthly';lsSet('hb.addmode','monthly');if(location.hash==='#add')render();else location.hash='add'});
   const on=(id,fn)=>{const el=$(id);el&&(el.onclick=fn)};
   v.querySelectorAll('[data-extra]').forEach(b=>b.onclick=()=>openTx({type:'수입',user:b.dataset.extra,date:defDate(curM),event:'',cat:''}));
+  on('#consultBtn',openConsult);
   on('#addFixed',()=>openFixed(null));on('#addMonthly',()=>openMonthly(null));
   on('#pAdd',()=>openParent(null));on('#aAdd',()=>openAsset(null));on('#dAdd',()=>openDebt(null));
   on('#evAdd',()=>openTx({type:'지출',event:evSel,date:defDate(curM),user:me(),share:'shared'}));
