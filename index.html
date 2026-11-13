@@ -67,6 +67,7 @@ main:focus{outline:none}
 .brand .dot{width:10px;height:10px;border-radius:2px;background:var(--accent);display:inline-block}
 .monthnav{display:flex;align-items:center;gap:4px;margin-left:auto}
 .monthnav button{width:36px;height:36px;border:1px solid var(--line-strong);background:var(--surface);border-radius:6px;cursor:pointer;font-size:16px}
+.monthnav button:disabled{opacity:.35;cursor:not-allowed}
 .monthnav .m{font-weight:700;font-size:16px;min-width:116px;text-align:center;padding:4px 8px;border:1px solid var(--line-strong);border-radius:6px;background:var(--field);cursor:pointer}
 .monthnav input[type=month]{position:absolute;opacity:0;pointer-events:none;width:1px;height:1px}
 main{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px 110px;max-width:1240px;width:100%;margin:0 auto;min-width:0}
@@ -393,6 +394,7 @@ const DEFAULTS={
   assetKinds:['예금·입출금','적금','투자','보증금','기타자산'],
   parents:{rate:0.01,rule:'',person:'B'},
   estimateMissing:false,
+  startMonth:202609,
   useShare:false,
   staleDays:45
 };
@@ -715,10 +717,13 @@ function renderNav(){
 }
 window.addEventListener('hashchange',()=>{render();$('#view').focus({preventScroll:true});window.scrollTo(0,0)});
 window.addEventListener('resize',()=>renderNav());
-$('#mPrev').onclick=()=>{curM=addM(curM,-1);render()};
+const minM=()=>+S.settings.startMonth||0;
+const blankS=()=>({settings:S.settings,tx:[],fixed:[],monthly:[],parents:[],assets:[],debts:[]});
+const aggM=m=>m<minM()?agg(blankS(),m):agg(S,m);
+$('#mPrev').onclick=()=>{if(addM(curM,-1)<minM()){toast(`가계부는 ${mLabel(minM())}부터 기록합니다`);return}curM=addM(curM,-1);render()};
 $('#mNext').onclick=()=>{curM=addM(curM,1);render()};
 $('#mLabel').onclick=(e)=>{e.preventDefault();const p=$('#mPick');p.value=mIso(curM);try{p.showPicker()}catch(_){p.focus();p.click()}};
-$('#mPick').onchange=e=>{const v=isoToM(e.target.value);if(v){curM=v;render()}};
+$('#mPick').onchange=e=>{const v=isoToM(e.target.value);if(v){curM=Math.max(v,minM());if(v<minM())toast(`가계부는 ${mLabel(minM())}부터 기록합니다`);render()}};
 
 /* ---------- 공통 UI ---------- */
 function toast(msg){const r=$('#toastRoot');r.innerHTML=`<div class="toast">${esc(msg)}</div>`;clearTimeout(toast.t);toast.t=setTimeout(()=>r.innerHTML='',2600)}
@@ -815,7 +820,7 @@ function txFields(v){
   const isEx=v.type==='지출',isTr=v.type==='내부이체';
   return [
     {k:'type',label:'구분',type:'seg',req:true,full:true,options:TYPES.map(t=>[t,t]),onChange:x=>{x.cat=''}},
-    {k:'date',label:'날짜',type:'date',req:true},
+    {k:'date',label:'날짜',type:'date',req:true,check:d=>d&&minM()&&ymOf(d)<minM()?`${mLabel(minM())} 이전 날짜는 기록하지 않습니다`:''},
     {k:'amount',label:'금액(원)',type:'won',req:true},
     {k:'event',label:'이벤트',type:'select',options:S.settings.events.filter(e=>e!=='일상'),placeholder:'일상',hint:'결혼·신혼여행 비용은 여기서 고르면 정산 화면에 자동 집계됩니다.',onChange:x=>{}},
     {k:'cat',label:'카테고리',type:'select',req:true,groups:catsFor(S,v.type,v.event)},
@@ -846,7 +851,7 @@ function openTx(t){
 
 /* ---------- 화면: 요약 ---------- */
 function vSummary(){
-  const a=agg(S,curM),p=agg(S,addM(curM,-1));const r=a.r;
+  const a=agg(S,curM),p=aggM(addM(curM,-1));const r=a.r;
   const d=(x,y)=>p.empty&&!y?'전월 기록 없음':`전월 대비 ${sgn(x-y)}`;
   let h=`<div class="stack">${banners()}
   <div class="row"><div><div class="eyebrow">월간 요약</div><h1>${mLabel(curM)}</h1></div><span class="spacer"></span><a class="btn primary" href="#add">+ 지출·수입 입력</a></div>`;
@@ -885,7 +890,7 @@ function vSummary(){
 function extraCard(m,a){
   const y=Math.floor(m/100);const P=['A','B','J','T'];
   const ytd={},ytdT={A:0,B:0,J:0,T:0};
-  for(let k=y*100+1;k<=m;k=addM(k,1)){const b=k===m?a:agg(S,k);
+  for(let k=Math.max(y*100+1,minM());k<=m;k=addM(k,1)){const b=k===m?a:agg(S,k);
     for(const[c,o]of Object.entries(b.extraCats)){const t=ytd[c]||(ytd[c]={A:0,B:0,J:0,T:0});P.forEach(u=>t[u]+=o[u])}
     P.forEach(u=>ytdT[u]+=b.extra[u])}
   const names=[...new Set([...(S.settings.cats.extraIncome||[]),...Object.keys(ytd)])];
@@ -1039,7 +1044,7 @@ function detailCard(title,cur,prev,tot){
 function niceStep(x){if(x<=0)return 1;const e=Math.pow(10,Math.floor(Math.log10(x)));const f=x/e;return (f<=1?1:f<=2?2:f<=2.5?2.5:f<=5?5:10)*e}
 function trendCard(m){
   const ms=[];for(let i=11;i>=0;i--)ms.push(addM(m,-i));
-  const first=dataMonths(S)[0];
+  const first=Math.max(dataMonths(S)[0]||0,minM())||undefined;
   const as=ms.map(k=>({m:k,a:(first&&k>=first)?agg(S,k):null}));
   const vals=as.flatMap(x=>x.a?[x.a.inc.T,x.a.exp.T,x.a.sav.T]:[]);
   const max=Math.max(1,...vals);const step=niceStep(max/4);const top=Math.ceil(max/step)*step;
@@ -1144,7 +1149,7 @@ function evalGrid(){
   return grid.map(r=>{
     if(rowBlank(r))return {blank:true};
     const errs=[];
-    let date=r.date?parseDate(r.date,y0):(prev||defDate(curM));if(date===null){errs.push('날짜 형식');date=''}else prev=date;
+    let date=r.date?parseDate(r.date,y0):(prev||defDate(curM));if(date===null){errs.push('날짜 형식');date=''}else{prev=date;if(minM()&&ymOf(date)<minM())errs.push(`${mLabel(minM())} 이전 날짜`)}
     const typed=String(r.type||'').trim();const type=typed?normType(typed):(prevType||'지출');if(!type)errs.push('구분');else prevType=type;
     let ev=String(r.event||'').trim()||'일상';if(!S.settings.events.includes(ev))errs.push('이벤트');
     const cat=String(r.cat||'').trim();
@@ -1457,7 +1462,7 @@ function vEvents(){
 /* ---------- 화면: 부모님 예치 ---------- */
 function vParents(){
   const ps=S.settings.parents;const p=parentsMonth(S,curM);
-  const months=[];for(let i=-8;i<=3;i++)months.push(addM(curM,i));
+  const months=[];for(let i=-8;i<=3;i++){const k=addM(curM,i);if(k>=minM())months.push(k)}
   const first=S.parents.length?Math.min(...S.parents.map(e=>ymOf(e.date))):null;
   const ledger=[...S.parents].sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   const ruleLabel=ps.rule==='same'?'예치한 달부터':ps.rule==='next'?'다음 달부터':'미정';
@@ -1528,6 +1533,7 @@ function vPrefs(){
    <div class="fld"><label for="pf-nB">두 번째 사람 표시 이름</label><input class="inp" id="pf-nB" value="${esc(s.names.B)}"></div>
    <div class="fld full"><label class="row" style="gap:8px;font-weight:600"><input type="checkbox" id="pf-est" ${s.estimateMissing?'checked':''}> 매달 입력 항목이 미입력이면 예상 금액으로 임시 계산</label><div class="hint">끄면 미입력 항목은 합계에서 빠지고 "미입력"으로만 표시됩니다(기본).</div></div>
    <div class="fld full"><label class="row" style="gap:8px;font-weight:600"><input type="checkbox" id="pf-share" ${s.useShare?'checked':''}> 지출을 공동생활비 / 개인으로 나눠 기록</label><div class="hint">공동 통장 없이 각자 통장에서 쓰는 경우 끄는 것을 권합니다(기본). 켜면 입력 칸과 요약의 공동생활비·개인지출 줄이 나타납니다.</div></div>
+   <div class="fld"><label for="pf-start">가계부 시작월</label><input class="inp" id="pf-start" type="month" value="${mIso(s.startMonth)}"><div class="hint">이 달 이전으로는 조회·입력하지 않습니다. 할부처럼 더 일찍 시작한 정기항목은 이 달부터만 집계됩니다.</div></div>
    <div class="fld"><label for="pf-stale">자산 갱신 경고 (일)</label><input class="inp" id="pf-stale" type="number" value="${s.staleDays}"></div>
   </div></div></section>
   <section class="card"><div class="card-h"><h2>선택 목록</h2><span class="sub">한 줄에 하나씩. 이미 쓴 이름을 바꾸면 예전 기록은 옛 이름으로 남습니다.</span></div><div class="card-b"><div class="form two">
@@ -1554,7 +1560,7 @@ function bindPrefs(){
     next.methods=lines('methods');next.assetKinds=lines('assetKinds');
     let ev=lines('events');ev=['일상',...ev.filter(e=>e!=='일상')];next.events=ev;
     next.names={A:$('#pf-nA').value.trim()||'본인',B:$('#pf-nB').value.trim()||'아내'};
-    next.estimateMissing=$('#pf-est').checked;next.useShare=$('#pf-share').checked;next.staleDays=Math.max(1,+$('#pf-stale').value||45);
+    next.estimateMissing=$('#pf-est').checked;next.useShare=$('#pf-share').checked;next.staleDays=Math.max(1,+$('#pf-stale').value||45);next.startMonth=isoToM($('#pf-start').value)||null;
     save.disabled=true;try{await saveSettings(next);toast('설정을 저장했습니다')}catch(e){}save.disabled=false;
   });
   bindLockPrefs();
@@ -1660,7 +1666,8 @@ function bindLockPrefs(){
 
 /* ---------- 렌더 ---------- */
 function render(){
-  $('#mLabel').textContent=mLabel(curM);
+  if(minM()&&curM<minM())curM=minM();
+  $('#mLabel').textContent=mLabel(curM);$('#mPrev').disabled=!!minM()&&curM<=minM();$('#mPick').min=minM()?mIso(minM()):'';
   renderNav();
   const r=route();const v=$('#view');
   if(mode==='login'){$('#lockBtn').hidden=true;$('#lockRoot').innerHTML='';v.innerHTML='';if(sheetState)closeSheet();drawLogin();return}
