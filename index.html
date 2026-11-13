@@ -175,6 +175,17 @@ h2{font-size:16.5px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .tw:has(> .ctbl){container-type:inline-size}
 .ctbl tr.catdetail .txlist{position:sticky;left:0;width:min(100%,calc(100vw - 38px));width:min(100%,100cqw)}
 .ctbl tr.catdetail .tbl thead th{background:var(--surface2);color:var(--muted);border-color:var(--line);font-size:12px;padding:5px 8px}
+.bdl{display:grid;grid-template-columns:86px minmax(0,1fr);margin:0;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.bdl dt{background:var(--surface2);font-weight:700;font-size:13.5px;padding:9px 10px;border-bottom:1px solid var(--line);border-right:1px solid var(--line)}
+.bdl dd{margin:0;padding:9px 12px;border-bottom:1px solid var(--line);line-height:1.6;min-width:0}
+.bdl dt:last-of-type,.bdl dd:last-of-type{border-bottom:0}
+.blist{list-style:none;margin:0 0 4px;padding:0}
+.blist li{display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px dashed var(--line)}
+.blist li:last-child{border-bottom:0}
+.warn-t{color:var(--warn);font-weight:600}
+.blist li>b{white-space:nowrap}
+.bdl dt{word-break:keep-all}
+@media (max-width:560px){.bdl{grid-template-columns:1fr}.bdl dt{border-right:0;padding:6px 12px;font-size:12.5px;color:var(--muted)}.bdl dd{padding-top:7px}}
 .bonus-line{grid-column:1/-1;display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding-top:6px;border-top:1px dashed var(--line)}
 .bonus-line .inp{width:auto;min-height:38px;font-size:15px}
 .bonus-line select.inp{max-width:160px}
@@ -388,6 +399,7 @@ const DEFAULTS={
 const PK={init:'초기원금',deposit:'추가예치',withdraw:'원금회수',interest:'이자 수령'};
 const ymOf=d=>d?(+String(d).slice(0,4))*100+(+String(d).slice(5,7)):null;
 const addM=(m,k)=>{let y=Math.floor(m/100),mo=(m%100)-1+k;y+=Math.floor(mo/12);mo=((mo%12)+12)%12;return y*100+mo+1};
+function dayDate(m,day){if(!day)return undefined;const y=Math.floor(m/100),mo=m%100,last=new Date(y,mo,0).getDate();return `${y}-${String(mo).padStart(2,'0')}-${String(Math.min(+day,last)).padStart(2,'0')}`}
 const active=(it,m)=>!!it.start&&m>=it.start&&(!it.end||m<=it.end);
 function mergeSettings(s){
   s=s||{};const o=JSON.parse(JSON.stringify(DEFAULTS));
@@ -443,7 +455,7 @@ function monthEntries(S,m){
   for(const f of S.fixed){
     if(!active(f,m))continue;
     if(txm.some(t=>t.link&&t.link===f.group))continue;
-    const e={src:'fixed',ref:f,type:f.type,cat:f.cat,item:f.name,amount:+f.amount||0,user:f.user,share:f.share||'',event:'일상',nature:f.type==='지출'?'고정':'',month:m};
+    const e={src:'fixed',ref:f,type:f.type,cat:f.cat,item:f.name,amount:+f.amount||0,user:f.user,share:f.share||'',event:'일상',nature:f.type==='지출'?'고정':'',month:m,date:dayDate(m,f.day)};
     out.push(e);autos.push(e);
   }
   const missing=[],entered=[];
@@ -849,6 +861,7 @@ function vSummary(){
     ${kpi('잔여 금액*',won(a.rest),d(a.rest,p.rest),null,true)}
     ${kpi('저축률',a.saveRate==null?'–':(a.saveRate*100).toFixed(1),a.saveRate!=null&&p.saveRate!=null?`전월 대비 ${((a.saveRate-p.saveRate)*100>=0?'+':'')+((a.saveRate-p.saveRate)*100).toFixed(1)}%p`:'저축·투자 ÷ 수입',null,false,a.saveRate==null?'':'%')}
   </div><p class="note">* 잔여 금액 = 수입 − 지출 − 저축·투자 − 대출원금 상환. 이번 달 흐름으로 계산한 값이며 <b>통장 실제 잔액과 다릅니다</b>. 내부이체·카드대금·부모님 원금 회수는 넣지 않습니다.</p></div>`;
+  h+=briefCard(a,p);
   if(a.empty&&!S.tx.length&&!S.fixed.length&&!S.monthly.length&&!loadingAll()){
     h+=`<div class="empty"><b>아직 기록이 없습니다.</b><br>먼저 <a href="#items">정기항목</a>에서 OTT·AI 도구 같은 고정 금액과 월급·관리비 같은 매달 입력 항목을 등록하고, <a href="#add">입력</a>에서 지출을 기록해 보세요.</div>`;
   }
@@ -926,6 +939,47 @@ function monthStatusCard(m,r){
   ${p.base>0||p.actual!=null?`<div class="row sub" style="font-size:13.5px">부모님 예치 이자 <b class="num" style="color:var(--ink)">${won(p.counted)}원</b> ${p.actual!=null?'<span class="badge b-ok">받음</span>':`<span class="badge b-warn">예상치</span><button class="btn small" data-pint="${m}" ${canWrite?'':'disabled'}>받음 기록</button>`}</div>`:''}
   ${r.autos.length?`<p class="note" style="margin:0">고정금액 ${r.autos.length}건(${won(autoT)}원)은 자동 반영됩니다.</p>`:''}
   </div></section>`;
+}
+function briefCard(a,p){
+  const m=a.m,mm=m%100,r=a.r,L=[];
+  if(a.empty)return `<section class="card brief"><div class="card-h"><h2>${mm}월 요약 브리핑</h2></div><div class="card-b sub">이 달에는 기록이 없어 브리핑을 만들 수 없습니다.</div></section>`;
+  const W=v=>`<b class="num">${won(v)}원</b>`;
+  const D=v=>`<span class="${v>0?'neg':v<0?'pos':''}">${v>0?'+':v<0?'−':''}${won(Math.abs(v))}원</span>`;
+  // 총평
+  let t=`수입 ${W(a.inc.T)}, 지출 ${W(a.exp.T)}, 저축·투자 ${W(a.sav.T)}${a.rep.T?`, 대출원금 상환 ${W(a.rep.T)}`:''}으로 잔여 금액은 <b class="num ${a.rest<0?'neg':''}">${won(a.rest)}원</b>입니다.`;
+  if(!p.empty){const dx=a.exp.T-p.exp.T;t+=dx===0?' 지출은 전월과 같습니다.':` 지출은 전월보다 <b class="num ${dx>0?'neg':'pos'}">${won(Math.abs(dx))}원</b> ${dx>0?'늘었습니다':'줄었습니다'}.`}
+  L.push(['총평',t]);
+  // 큰 지출
+  const thr=300000;
+  const big=r.entries.filter(e=>e.src==='tx'&&e.type==='지출'&&e.amount>=thr).sort((x,y)=>y.amount-x.amount);
+  if(big.length){const top=big.slice(0,5),sum=big.reduce((s,e)=>s+e.amount,0);
+    L.push(['큰 지출',`<ul class="blist">${top.map(e=>`<li><span>${esc(e.item||e.cat)} <span class="sub">${esc(e.cat)}${e.event&&e.event!=='일상'?' · '+esc(e.event):''}</span></span>${W(e.amount)}</li>`).join('')}</ul><div class="sub">${won(thr)}원 이상 지출 ${big.length}건, 합계 ${won(sum)}원 (이달 지출의 ${pct(sum/(a.exp.T||1))})${big.length>5?' · 상위 5건만 표시':''}</div>`])}
+  if(a.event>0)L.push(['이벤트 지출',`${Object.entries(a.evByEvent).map(([k,v])=>`${esc(k)} ${W(v)}`).join(', ')} — 평소 생활비 비교가 흐려지지 않도록 일상 생활비(${won(a.daily)}원)에서 뺐습니다.`]);
+  // 많이 쓴 곳
+  const cats=Object.entries(a.expCats).sort((x,y)=>y[1]-x[1]);
+  if(cats.length)L.push(['많이 쓴 곳',`일상 생활비 ${W(a.daily)} 중 `+cats.slice(0,3).map(([n,v])=>`${esc(n)} ${won(v)}원(${pct(v/(a.daily||1))})`).join(', ')+'.']);
+  // 전월 대비
+  if(!p.empty){const ch=[...new Set([...Object.keys(a.expCats),...Object.keys(p.expCats)])].map(n=>[n,(a.expCats[n]||0)-(p.expCats[n]||0)]).filter(x=>Math.abs(x[1])>=30000);
+    const up=ch.filter(x=>x[1]>0).sort((x,y)=>y[1]-x[1]).slice(0,2),dn=ch.filter(x=>x[1]<0).sort((x,y)=>x[1]-y[1]).slice(0,2);
+    if(up.length||dn.length)L.push(['전월 대비',[up.length?up.map(([n,v])=>`${esc(n)} ${D(v)}`).join(', ')+' 늘었고':'',dn.length?dn.map(([n,v])=>`${esc(n)} ${D(v)}`).join(', ')+' 줄었습니다':''].filter(Boolean).join(', ')+(dn.length?'.':'습니다.')])}
+  // 고정·변동, 할부
+  const inst=r.entries.filter(e=>e.type==='지출'&&((e.src==='fixed'&&e.ref.installment)||(e.src==='tx'&&e.ref.link&&S.fixed.some(f=>f.group===e.ref.link&&f.installment))));
+  const instT=inst.reduce((s,e)=>s+e.amount,0);
+  L.push(['고정·변동',`고정지출 ${W(a.fixed)}(${pct(a.fixed/(a.exp.T||1))}), 변동지출 ${W(a.variable)}.${inst.length?` 이 중 할부 ${inst.length}건 ${won(instT)}원.`:''}`]);
+  // 수입
+  const bonusSet=new Set(S.settings.cats.bonus||[]),extraSet=new Set(S.settings.cats.extraIncome||[]);
+  const base=Object.entries(a.incCats).filter(([n])=>!bonusSet.has(n)&&!extraSet.has(n)).reduce((s,[,v])=>s+v,0);
+  let it=`급여 등 기본 수입 ${W(base)}`;
+  if(a.bonus.T)it+=`, 상여·성과급 ${W(a.bonus.T)}`;
+  if(a.extra.T){const ex=Object.entries(a.extraCats).sort((x,y)=>y[1].T-x[1].T).map(([n,o])=>`${esc(n)} ${won(o.T)}원`).join(', ');it+=`, 추가 소득 ${W(a.extra.T)}(${ex})`}
+  it+=`. ${esc(uname('A'))} ${won(a.inc.A)}원 · ${esc(uname('B'))} ${won(a.inc.B)}원${a.inc.J?` · 공동 ${won(a.inc.J)}원`:''}.`;
+  L.push(['수입',it]);
+  // 저축
+  L.push(['저축',a.sav.T?`저축·투자 ${W(a.sav.T)}, 저축률 <b>${pct(a.saveRate)}</b>${!p.empty&&p.saveRate!=null&&a.saveRate!=null?` (전월 ${pct(p.saveRate)})`:''}.`:'이 달 저축·투자 기록이 없습니다.']);
+  // 확인 필요
+  const chk=[];if(r.missing.length)chk.push(`매달 입력 미입력: ${r.missing.map(x=>esc(x.name)).join(', ')}`);if(a.provisional)chk.push(`예상치로 계산한 항목 ${a.provisional}건`);
+  if(chk.length)L.push(['확인 필요',`<span class="warn-t">${chk.join(' · ')}</span>`]);
+  return `<section class="card brief"><div class="card-h"><h2>${mm}월 요약 브리핑</h2><span class="sub">입력한 기록으로 자동 작성</span></div><div class="card-b"><dl class="bdl">${L.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></div></section>`;
 }
 function personCard(a){
   const row=(l,o,cls)=>`<tr${cls?` class="${cls}"`:''}><td class="rowh">${l}</td><td class="n">${won(o.A)}</td><td class="n">${won(o.B)}</td><td class="n">${won(o.J)}</td><td class="n"><b>${won(o.T)}</b></td></tr>`;
@@ -1225,13 +1279,14 @@ let listF={type:'',user:'',event:'',q:'',showAuto:true};
 const TPC={'수입':'t-in','지출':'t-ex','저축·투자':'t-sv','대출원금 상환':'t-rp','내부이체':'t-tr'};
 const TPL={'저축·투자':'저축','대출원금 상환':'상환','내부이체':'이체'};
 const whoChip=u=>u==='A'||u==='B'||u==='J'?`<span class="who who-${u}">${esc(uname(u))}</span>`:'<span class="sub">–</span>';
+function linkBadge(t){const f=S.fixed.find(x=>x.group===t.link&&active(x,t.month))||S.fixed.find(x=>x.group===t.link);const ii=f?instInfo(f,t.month):null;return ii?`<span class="badge b-auto">할부 ${ii.n}/${ii.tot}</span> `:'<span class="badge b-auto">정기</span> '}
 function txTable(rows){
   const cls={'수입':'amt-in','지출':'amt-ex','저축·투자':'amt-sv','대출원금 상환':'amt-rp','내부이체':'amt-tr'};
   return `<table class="tbl"><thead><tr><th>날짜</th><th>내용</th><th>사람</th><th>금액(원)</th></tr></thead><tbody>${rows.map((e,i)=>{
     const t=e.ref||{};const auto=e.src!=='tx';
     const key=e.src==='tx'?`data-edit-tx="${t.id}"`:e.src==='fixed'?`data-override="${t.id}"`:e.src==='estimate'?`data-fill="${t.id}"`:'';
     const ii=e.src==='fixed'?instInfo(t,e.month):null;
-    const badge=e.src==='fixed'?(ii?`<span class="badge b-auto">할부 ${ii.n}/${ii.tot}</span> `:'<span class="badge b-auto">자동·고정</span> '):e.src==='estimate'?'<span class="badge b-warn">예상치</span> ':e.src==='parents'?`<span class="badge ${e.provisional?'b-warn':'b-auto'}">${e.provisional?'예상 이자':'부모님 예치'}</span> `:(t.link?'<span class="badge b-auto">정기</span> ':'');
+    const badge=e.src==='fixed'?(ii?`<span class="badge b-auto">할부 ${ii.n}/${ii.tot}</span> `:'<span class="badge b-auto">자동·고정</span> '):e.src==='estimate'?'<span class="badge b-warn">예상치</span> ':e.src==='parents'?`<span class="badge ${e.provisional?'b-warn':'b-auto'}">${e.provisional?'예상 이자':'부모님 예치'}</span> `:(t.link?linkBadge(t):'');
     const ev=e.event&&e.event!=='일상'?` <span class="badge b-ev">${esc(e.event)}</span>`:'';
     const sub=`<span class="tp ${TPC[e.type]||''}">${esc(TPL[e.type]||e.type)}</span>${esc(e.cat)}${S.settings.useShare&&e.type==='지출'&&e.share==='personal'?' · 개인':''}`;
     return `<tr class="${key?'click ':''}${TPC[e.type]||''}" ${key} tabindex="${key?0:-1}"><td class="c mono" style="font-size:13px;white-space:nowrap">${e.date?e.date.slice(5).replace('-','.'):'매월'}</td><td style="min-width:0"><span class="det">${badge}${esc(e.item||e.cat)}${ev}</span><span class="sm">${sub}</span></td><td class="c" style="white-space:nowrap">${whoChip(e.user)}</td><td class="n ${cls[e.type]||''}"><b>${e.type==='수입'?'+':e.type==='지출'?'−':''}${won(e.amount)}</b>${e.type==='내부이체'?'<span class="sm">합계 제외</span>':''}</td></tr>`}).join('')}</tbody></table>`;
@@ -1615,7 +1670,7 @@ function render(){
 function bindCommon(v){
   v.querySelectorAll('[data-edit-tx]').forEach(el=>{const go=()=>{const t=S.tx.find(x=>x.id===el.dataset.editTx);t&&openTx(t)};el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter')go()}});
   v.querySelectorAll('[data-override]').forEach(el=>{const go=()=>{const f=S.fixed.find(x=>x.id===el.dataset.override);if(!f)return;
-    openTx({type:f.type,cat:f.cat,item:f.name,amount:f.amount,user:f.user,share:f.share||'shared',method:f.method,event:'일상',date:defDate(curM),link:f.group,nature:'고정',memo:'이번 달만 금액 변경'})};el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter')go()}});
+    openTx({type:f.type,cat:f.cat,item:f.name,amount:f.amount,user:f.user,share:f.share||'shared',method:f.method,event:'일상',date:dayDate(curM,f.day)||defDate(curM),link:f.group,nature:'고정',memo:'이번 달만 금액 변경'})};el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter')go()}});
   v.querySelectorAll('[data-fill]').forEach(el=>{const go=()=>{const it=S.monthly.find(x=>x.id===el.dataset.fill);it&&fillMonthly(it)};el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter')go()}});
   const qv=id=>quickVals[id]||(quickVals[id]={});
   const fmtIn=(inp,cb)=>inp.addEventListener('input',()=>{const d=inp.value.replace(/[^\d]/g,'');inp.value=d?won(+d):'';inp.classList.remove('err');cb(d===''?'':+d)});
