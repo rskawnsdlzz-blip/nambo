@@ -236,6 +236,7 @@ h2{font-size:16.5px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .btn.small{min-height:32px;padding:0 10px;font-size:13.5px}
 .btn.danger{color:var(--bad);border-color:color-mix(in srgb,var(--bad) 50%,transparent)}
 .btn.armed{background:var(--bad);color:#fff;border-color:var(--bad)}
+#gSave.armed{background:#B57A00;border-color:#B57A00}
 .btn.ghost{border-color:transparent;background:transparent;color:var(--accent)}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 
@@ -339,6 +340,9 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:1140px
 .grid tr.bad td{background:var(--bad-bg)}
 .grid tr.bad td.st{color:var(--bad);font-weight:600}
 .grid tr.ok td.st{color:var(--ok);font-weight:600}
+.grid tr.dup td{background:#FFF6DC}
+.grid tr.dup td.st{color:#8A5A00;font-weight:600}
+.dupwarn{border:1.5px solid #E0B44C;background:#FFF6DC;color:#5C3D00;border-radius:10px;padding:10px 12px;font-size:13.5px;margin-top:10px;line-height:1.5}
 .grid td.del{background:var(--surface);width:34px;text-align:center}
 .grid td.del button{border:0;background:transparent;cursor:pointer;color:var(--faint);font-size:16px;width:32px;height:36px}
 .grid td.del button:hover{color:var(--bad)}
@@ -800,11 +804,12 @@ function closeSheet(){sheetState=null;$('#sheetRoot').innerHTML='';if(renderPend
 function drawSheet(){
   const s=sheetState;if(!s)return;
   const fields=typeof s.fields==='function'?s.fields(s.vals):s.fields;
-  const body=(s.intro?`<p class="sub" style="margin-bottom:12px">${s.intro}</p>`:'')+formHtml(fields,s.vals,s.errs,'sh',true)+(s.extra?s.extra(s.vals):'');
+  const warnOn=!!s.warn&&(!s.warnKey||s.warnKey(s.vals)===s.dupOk);
+  const body=(s.intro?`<p class="sub" style="margin-bottom:12px">${s.intro}</p>`:'')+formHtml(fields,s.vals,s.errs,'sh',true)+(s.extra?s.extra(s.vals):'')+(warnOn?`<div class="dupwarn" role="alert">⚠ ${esc(s.warn)}</div>`:'');
   $('#sheetRoot').innerHTML=`<div class="scrim" id="scrim"><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shT">
     <div class="sheet-h"><h2 id="shT">${esc(s.title)}</h2><button class="x" id="shX" aria-label="닫기">×</button></div>
     <div class="sheet-b">${body}
-    <div class="formbar">${s.onDelete?`<button class="btn danger" id="shDel">삭제</button><span class="spacer"></span>`:''}<button class="btn" id="shCancel">취소</button><button class="btn primary" id="shSave" ${canWrite?'':'disabled'}>${esc(s.saveLabel||'저장')}</button></div></div></div></div>`;
+    <div class="formbar">${s.onDelete?`<button class="btn danger" id="shDel">삭제</button><span class="spacer"></span>`:''}<button class="btn" id="shCancel">취소</button><button class="btn primary" id="shSave" ${canWrite?'':'disabled'}>${esc(warnOn?'그래도 저장':(s.saveLabel||'저장'))}</button></div></div></div></div>`;
   const root=$('#sheetRoot');
   bindForm(root,fields,s.vals,drawSheet);
   $('#shX').onclick=$('#shCancel').onclick=closeSheet;
@@ -842,13 +847,21 @@ function valsToTx(v,base){
   if(!t.createdAt)t.createdAt=new Date().toISOString();
   return t;
 }
+/* 중복 입력 확인: 같은 날짜·구분·금액에 내용(내용이 없으면 카테고리)까지 같으면 의심 */
+const normItem=x=>String(x||'').replace(/\s+/g,'').toLowerCase();
+const dupKey=t=>[t.date,t.type,+t.amount||0,normItem(t.item),normItem(t.item)?'':(t.cat||'')].join('|');
+function findDup(tx,ignoreId){const k=dupKey(tx);return S.tx.find(t=>t.id!==ignoreId&&dupKey(t)===k)}
+function dupMsg(d){return `${fmtMD(d.date)} '${d.item||d.cat}' ${won(d.amount)}원이 이미 기록되어 있습니다(${uname(d.user)||'사용자 없음'}). 두 번 산 게 맞다면 한 번 더 저장을 누르세요.`}
 function openTx(t){
   const isNew=!t.id;const base={...t};
   const linkName=t.link?(S.fixed.find(f=>f.group===t.link)?.name||S.monthly.find(x=>x.id===t.link)?.name):'';
   const withName=t.with?S.monthly.find(x=>x.id===t.with)?.name:'';
   openSheet({title:isNew?(t.link?'이번 달 금액 입력':'거래 입력'):'거래 수정',values:txToVals(t),fields:txFields,
     intro:linkName?`<span class="badge b-auto">연결된 정기항목</span> <b>${esc(linkName)}</b> — 이 금액이 그 달의 자동 금액 대신 집계됩니다.`:withName?`<b>${esc(withName)}</b> 옆에 함께 표시되는 상여·성과급입니다. 월급과는 따로 집계됩니다.`:'',
-    onSave:async v=>{const id=t.id||newId('tx');await put('tx',id,valsToTx(v,base))},
+    warnKey:v=>dupKey(valsToTx(v,base)),
+    onSave:async v=>{const tx=valsToTx(v,base);const k=dupKey(tx);const s=sheetState;
+      if((isNew||k!==dupKey(base))&&s.dupOk!==k){const d=findDup(tx,t.id);if(d){s.dupOk=k;s.warn=dupMsg(d);drawSheet();throw {dup:1}}}
+      const id=t.id||newId('tx');await put('tx',id,tx)},
     onDelete:isNew?null:async()=>del('tx',t.id)});
 }
 
@@ -1148,8 +1161,9 @@ function trendCard(m){
 }
 
 /* ---------- 화면: 입력 ---------- */
-let addVals=null,addErrs={};
+let addVals=null,addErrs={},addDup=null;
 function freshAdd(keep){const u=me();return {type:keep?.type||'지출',date:keep?.date||defDate(curM),amount:'',event:keep?.event||'',cat:keep?.type===undefined?'':(keep?.cat||''),item:'',user:keep?.user||u,share:'shared',method:keep?.method||'',memo:''}}
+function addDupShown(){return !!(addDup&&addVals&&addDup.k===dupKey(valsToTx(addVals)))}
 function vAddOne(tog){
   if(!addVals)addVals=freshAdd();
   const fields=txFields(addVals);
@@ -1157,7 +1171,8 @@ function vAddOne(tog){
   return `<div class="stack">${banners()}<div><div class="eyebrow">입력</div><h1>지출·수입 기록</h1><p class="sub">고정 금액 구독료는 자동 반영되니 입력하지 않아도 됩니다. 카드값 출금과 부부간 이체는 <b>내부이체</b>로 기록하면 합계에서 빠집니다.</p></div>${tog}
   <div class="grid2"><section class="card"><div class="card-h"><h2>새 기록</h2><span class="spacer"></span><span class="sub">입력자 기본값: ${esc(uname(me()))}</span></div><div class="card-b" id="addForm">${formHtml(fields,addVals,addErrs,'ad',true)}
   <datalist id="dl-item">${[...new Set(S.tx.map(t=>t.item).filter(Boolean))].slice(-200).map(x=>`<option value="${esc(x)}">`).join('')}</datalist>
-  <div class="formbar"><button class="btn" id="addReset">비우기</button><button class="btn primary" id="addSave" ${canWrite?'':'disabled'}>저장</button></div></div></section>
+  ${addDupShown()?`<div class="dupwarn" role="alert">⚠ ${esc(addDup.msg)}</div>`:''}
+  <div class="formbar"><button class="btn" id="addReset">비우기</button><button class="btn primary" id="addSave" ${canWrite?'':'disabled'}>${addDupShown()?'그래도 저장':'저장'}</button></div></div></section>
   <div class="stack">${recentExpCard(10)}</div></div></div>`;
 }
 function lastExpInfo(){
@@ -1187,11 +1202,14 @@ function bindAdd(){
   const root=$('#addForm');if(!root)return;
   const fields=txFields(addVals);
   bindForm(root,fields,addVals,()=>{render()});
-  $('#addReset').onclick=()=>{addVals=freshAdd();addErrs={};render()};
+  $('#addReset').onclick=()=>{addVals=freshAdd();addErrs={};addDup=null;render()};
   $('#addSave').onclick=async()=>{
     addErrs=validate(txFields(addVals),addVals);if(Object.keys(addErrs).length){render();return}
+    const tx=valsToTx(addVals);const k=dupKey(tx);
+    if(!(addDup&&addDup.k===k)){const d=findDup(tx);if(d){addDup={k,msg:dupMsg(d)};render();return}}
+    addDup=null;
     const b=$('#addSave');b.disabled=true;
-    try{await put('tx',newId('tx'),valsToTx(addVals));toast(`${addVals.cat} ${won(addVals.amount)}원 저장했습니다`);
+    try{await put('tx',newId('tx'),tx);toast(`${addVals.cat} ${won(addVals.amount)}원 저장했습니다`);
       const keep=addVals;addVals=freshAdd(keep);addErrs={};render();setTimeout(()=>$('#ad-amount')?.focus(),30)}catch(e){b.disabled=false}
   };
 }
@@ -1220,8 +1238,8 @@ const rowBlank=r=>!['cat','item','amount','memo'].some(k=>String(r[k]??'').trim(
 const normType=v=>{v=String(v||'').replace(/\s/g,'');return v?TYPE_ALIAS[v]||null:'지출'};
 function effType(i){for(let k=i;k>=0;k--){const r=grid[k];if(!r)continue;const t=String(r.type||'').trim();if(t)return normType(t)||'지출';if(k<i&&rowBlank(r))continue}return '지출'}
 function evalGrid(){
-  let prev=null,prevType=null;const y0=Math.floor(curM/100);
-  return grid.map(r=>{
+  let prev=null,prevType=null;const y0=Math.floor(curM/100);const seen=new Map();
+  const out=grid.map((r,i)=>{
     if(rowBlank(r))return {blank:true};
     const errs=[];
     let date=r.date?parseDate(r.date,y0):(prev||defDate(curM));if(date===null){errs.push('날짜 형식');date=''}else{prev=date;if(minM()&&ymOf(date)<minM())errs.push(`${mLabel(minM())} 이전 날짜`)}
@@ -1233,8 +1251,12 @@ function evalGrid(){
     if(!dg)errs.push('금액');else if(neg)errs.push('음수 금액');
     let u=r.user?userKey(r.user):me();if(u===null){errs.push('사용자');u=''}
     if(type==='내부이체'&&!r.user)u='';
-    return {errs,tx:{type,date,month:ymOf(date),amount:+dg||0,event:ev,cat,item:String(r.item||'').trim(),user:u,share:type==='지출'&&S.settings.useShare?'shared':'',method:String(r.method||'').trim(),memo:String(r.memo||'').trim(),nature:type==='지출'?'변동':''}};
+    const tx={type,date,month:ymOf(date),amount:+dg||0,event:ev,cat,item:String(r.item||'').trim(),user:u,share:type==='지출'&&S.settings.useShare?'shared':'',method:String(r.method||'').trim(),memo:String(r.memo||'').trim(),nature:type==='지출'?'변동':''};
+    let dup='';
+    if(!errs.length){const k=dupKey(tx);const d=findDup(tx);if(d)dup='이미 같은 기록이 있음';else if(seen.has(k))dup=`${seen.get(k)+1}행과 같음`;if(!seen.has(k))seen.set(k,i)}
+    return {errs,dup,tx};
   });
+  return out;
 }
 function catListId(r){const t=normType(r.type)||'지출';return 'dlg-'+TYPES.indexOf(t)}
 function vGrid(tog){
@@ -1243,7 +1265,7 @@ function vGrid(tog){
   const ph={date:'예: 11.3',type:'지출',user:uname(me()),event:'일상',amount:'0'};
   const lst={type:'dlg-type',user:'dlg-user',method:'dlg-method',event:'dlg-event',item:'dl-item'};
   const rows=grid.map((r,i)=>{const e=ev[i];
-    return `<tr data-row="${i}" class="${e.blank?'':e.errs.length?'bad':'ok'}"><td class="rn">${i+1}</td><td class="st" data-st="${i}" ${stTitle(e)}>${stText(e)}</td>${GCOLS.map(([k],c)=>`<td><input data-r="${i}" data-c="${c}" value="${esc(k==='amount'?fmtAmt(r[k]):(r[k]??''))}" ${k==='amount'?'class="num" inputmode="numeric"':''} placeholder="${esc(i===0||!['date','type'].includes(k)?(ph[k]||''):'위 행과 같음')}" autocomplete="off" aria-label="${i+1}행 ${GCOLS[c][1]}"></td>`).join('')}
+    return `<tr data-row="${i}" class="${rowCls(e)}"><td class="rn">${i+1}</td><td class="st" data-st="${i}" ${stTitle(e)}>${stText(e)}</td>${GCOLS.map(([k],c)=>`<td><input data-r="${i}" data-c="${c}" value="${esc(k==='amount'?fmtAmt(r[k]):(r[k]??''))}" ${k==='amount'?'class="num" inputmode="numeric"':''} placeholder="${esc(i===0||!['date','type'].includes(k)?(ph[k]||''):'위 행과 같음')}" autocomplete="off" aria-label="${i+1}행 ${GCOLS[c][1]}"></td>`).join('')}
     <td class="del"><button type="button" data-gdel="${i}" aria-label="${i+1}행 지우기">×</button></td></tr>`}).join('');
   return `<div class="stack">${banners()}<div><div class="eyebrow">입력</div><h1>표로 여러 건 입력</h1><p class="sub">엑셀처럼 칸을 옮겨 다니며 입력하고 한 번에 저장합니다. 비워 둔 칸은 회색 예시값으로 저장됩니다. 날짜와 구분은 위 행과 같게, 사용자는 ${esc(uname(me()))}, 이벤트는 일상입니다(첫 행의 구분을 비우면 지출).</p></div>${tog}
   <details class="help"><summary>사용법 · 엑셀/카드 명세서 붙여넣기</summary><ul>
@@ -1265,12 +1287,15 @@ function vGrid(tog){
    <div class="row"><button class="btn small" id="gMore">+ 10행</button><button class="btn small danger" id="gClear">모두 비우기</button><span class="spacer"></span><span class="gsum" id="gSum">${gridSumText(ev)}</span><button class="btn primary" id="gSave" ${canWrite?'':'disabled'}>저장</button></div>
   </div></section>${recentExpCard(10)}</div>`;
 }
-function stText(e){return e.blank?'':e.errs.length?'⚠ 확인':'✓'}
-function stTitle(e){return !e.blank&&e.errs.length?`title="${esc(e.errs.join(', '))}"`:''}
-function gridErrHtml(ev){const l=ev.map((e,i)=>({e,i})).filter(x=>!x.e.blank&&x.e.errs.length);return l.length?`<div class="banner" style="font-size:13.5px">${l.slice(0,8).map(x=>`<div><b>${x.i+1}행</b> — ${esc(x.e.errs.join(', '))}</div>`).join('')}${l.length>8?`<div>외 ${l.length-8}행</div>`:''}<div class="sub" style="margin-top:4px">카테고리가 목록에 없으면 설정·백업에서 먼저 추가하세요.</div></div>`:''}
+function rowCls(e){return e.blank?'':e.errs.length?'bad':e.dup?'dup':'ok'}
+function stText(e){return e.blank?'':e.errs.length?'⚠ 확인':e.dup?'중복?':'✓'}
+function stTitle(e){return e.blank?'':e.errs.length?`title="${esc(e.errs.join(', '))}"`:e.dup?`title="${esc(e.dup)}"`:''}
+function gridDupHtml(ev){const l=ev.map((e,i)=>({e,i})).filter(x=>!x.e.blank&&!x.e.errs.length&&x.e.dup);return l.length?`<div class="dupwarn">${l.slice(0,8).map(x=>`<div><b>${x.i+1}행</b> 중복 의심 — ${esc(x.e.dup)} (${fmtMD(x.e.tx.date)} ${esc(x.e.tx.item||x.e.tx.cat)} ${won(x.e.tx.amount)}원)</div>`).join('')}${l.length>8?`<div>외 ${l.length-8}행</div>`:''}<div style="margin-top:4px">실수로 두 번 넣은 거라면 그 행의 ×를 눌러 지우세요. 정말 같은 걸 두 번 샀다면 그대로 저장하면 됩니다(저장을 두 번 누르기).</div></div>`:''}
+function gridErrHtml(ev){return gridErrOnly(ev)+gridDupHtml(ev)}
+function gridErrOnly(ev){const l=ev.map((e,i)=>({e,i})).filter(x=>!x.e.blank&&x.e.errs.length);return l.length?`<div class="banner" style="font-size:13.5px">${l.slice(0,8).map(x=>`<div><b>${x.i+1}행</b> — ${esc(x.e.errs.join(', '))}</div>`).join('')}${l.length>8?`<div>외 ${l.length-8}행</div>`:''}<div class="sub" style="margin-top:4px">카테고리가 목록에 없으면 설정·백업에서 먼저 추가하세요.</div></div>`:''}
 function gridSumText(ev){const ok=ev.filter(e=>!e.blank&&!e.errs.length);const bad=ev.filter(e=>!e.blank&&e.errs.length).length;const by=t=>ok.filter(e=>e.tx.type===t).reduce((s,e)=>s+e.tx.amount,0);
   return `저장 가능 <b>${ok.length}건</b> · 지출 ${won(by('지출'))}원${by('수입')?` · 수입 ${won(by('수입'))}원`:''}${bad?` · <span style="color:var(--bad);font-weight:600">확인 필요 ${bad}건</span>`:''}`}
-function gridRefreshStatus(){const ev=evalGrid();ev.forEach((e,i)=>{const tr=document.querySelector(`tr[data-row="${i}"]`);if(!tr)return;tr.className=e.blank?'':e.errs.length?'bad':'ok';const st=tr.querySelector('.st');st.innerHTML=stText(e);if(!e.blank&&e.errs.length)st.title=e.errs.join(', ');else st.removeAttribute('title')});const ge=$('#gErr');ge&&(ge.innerHTML=gridErrHtml(ev));const g=$('#gSum');g&&(g.innerHTML=gridSumText(ev));const b=$('#gSave');b&&(b.textContent=`저장`)}
+function gridRefreshStatus(){const ev=evalGrid();ev.forEach((e,i)=>{const tr=document.querySelector(`tr[data-row="${i}"]`);if(!tr)return;tr.className=rowCls(e);const st=tr.querySelector('.st');st.innerHTML=stText(e);const tt=e.blank?'':e.errs.length?e.errs.join(', '):e.dup||'';if(tt)st.title=tt;else st.removeAttribute('title')});const ge=$('#gErr');ge&&(ge.innerHTML=gridErrHtml(ev));const g=$('#gSum');g&&(g.innerHTML=gridSumText(ev));const b=$('#gSave');if(b){b.textContent='저장';b.classList.remove('armed')}}
 function gridFocus(r,c){const el=document.querySelector(`.grid input[data-r="${r}"][data-c="${c}"]`);if(el){el.focus();try{el.select()}catch(_){}}}
 /* 표 입력용 드롭다운 (스크롤 가능) */
 let gd=null,gdSuppress=false;
@@ -1352,7 +1377,9 @@ function bindGrid(){
   const sv=$('#gSave');sv.onclick=async()=>{
     const ev=evalGrid();const ok=ev.map((e,i)=>({e,i})).filter(x=>!x.e.blank&&!x.e.errs.length);
     if(!ok.length){toast(ev.some(e=>!e.blank)?'확인이 필요한 행을 먼저 고쳐 주세요':'입력한 행이 없습니다');return}
-    sv.disabled=true;const saved=new Set();const now=Date.now();
+    const nd=ok.filter(x=>x.e.dup).length;
+    if(nd&&!sv.classList.contains('armed')){sv.classList.add('armed');sv.textContent=`중복 의심 ${nd}건 포함 · 한 번 더 누르면 저장`;toast(`중복 의심 ${nd}건이 있습니다. 노란 행을 확인해 주세요`);return}
+    sv.classList.remove('armed');sv.disabled=true;const saved=new Set();const now=Date.now();
     try{for(const [n,x] of ok.entries()){await put('tx',newId('tx'),{...x.e.tx,createdAt:new Date(now+n).toISOString()});saved.add(x.i);sv.textContent=`저장 중 ${n+1}/${ok.length}`}}
     catch(err){}
     grid=grid.filter((_,i)=>!saved.has(i));while(grid.length<12)grid.push({});lsSet('hb.grid',JSON.stringify(grid));
