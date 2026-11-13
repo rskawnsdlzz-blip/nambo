@@ -601,6 +601,7 @@ async function boot(){
   if(!window.firebase||!cfg||!cfg.apiKey||/여기에|YOUR_/.test(cfg.apiKey)){
     setupMissing=true;mode='memory';S.lockLoaded=true;COLS.forEach(c=>S.loaded[c]=true);S.settingsDoc=true;render();return}
   try{firebase.initializeApp(cfg);AUTH=firebase.auth();FSDB=firebase.firestore();
+    try{FSDB.settings({experimentalAutoDetectLongPolling:true,merge:true})}catch(e){}
     try{await FSDB.enablePersistence({synchronizeTabs:true})}catch(e){}
     try{await AUTH.setPersistence(firebase.auth.Auth.Persistence.LOCAL)}catch(e){}
   }catch(e){setupMissing=true;mode='memory';S.lockLoaded=true;COLS.forEach(c=>S.loaded[c]=true);S.settingsDoc=true;connNote='Firebase 설정값을 읽지 못했습니다. config.js를 확인해 주세요.';render();return}
@@ -615,7 +616,13 @@ function startData(u){
   DB={collection:n=>root.collection(n),doc:p=>{const k=p.split('/');return root.collection(k[0]).doc(k[1])}};
   mode='db';canWrite=true;
   const meMail=(u.email||'').toLowerCase();
-  const timer=setTimeout(()=>{connNote='저장소에 아직 연결되지 않았습니다. 인터넷 연결을 확인해 주세요. 지금 보이는 내용은 이 기기에 저장된 마지막 상태입니다.';requestRender()},10000);
+  const timer=setTimeout(()=>{connNote='저장소에 아직 연결되지 않았습니다. 인터넷 연결을 확인해 주세요. 지금 보이는 내용은 이 기기에 저장된 마지막 상태입니다.';requestRender();
+    DB.doc('config/settings').get({source:'server'}).then(()=>{connNote='';requestRender()}).catch(e=>{
+      const msg=String(e&&e.message||'');let why='';
+      if(/does not exist/i.test(msg))why='Firestore 데이터베이스가 없습니다. Firebase 콘솔에서 Firestore Database를 (default) 이름으로 만들어 주세요.';
+      else if(e&&e.code==='permission-denied')why='데이터베이스 규칙이 이 계정을 막고 있습니다. 규칙의 이메일을 확인해 주세요.';
+      else if(e&&e.code==='unavailable')why='Firebase 서버에 닿지 못했습니다. 다른 네트워크(휴대폰 데이터 등)에서 열어 보세요.';
+      connNote=`저장소에 연결하지 못했습니다. ${why} [진단: ${e&&e.code||'?'} · ${msg.slice(0,180)}]`;requestRender()})},10000);
   let pending=COLS.length+1;
   const done=()=>{if(--pending<=0){clearTimeout(timer);if(/아직 연결/.test(connNote))connNote=''}};
   const onErr=(name)=>(e)=>{clearTimeout(timer);
