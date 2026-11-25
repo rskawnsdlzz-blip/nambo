@@ -200,6 +200,19 @@ h2{font-size:16.5px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .tbl tr.subrow td.rowh{font-weight:500;padding-left:22px}
 .tbl thead tr.h2 th{background:color-mix(in srgb,var(--head) 82%,var(--surface));font-size:12.5px}
 .tbl tr.hl td{background:var(--hl)!important}
+.stbl tr.sec td{font-weight:700;background:var(--surface2)}
+.stbl tr.sec td.rowh{font-weight:700}
+.stbl tr.sub2 td{font-size:12.5px}
+.stbl .sn{display:block;font-weight:400;font-size:12px;color:var(--muted);margin-top:1px}
+.stbl td.rowh{white-space:normal;min-width:118px}
+.stbl tr.sub2 td.rowh{padding-left:40px}
+.sdot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px;vertical-align:1px}
+.sform{padding-bottom:6px}
+.formula{font-size:13.5px;color:var(--muted);margin-bottom:10px}.formula b{color:var(--ink)}
+.sbar{display:flex;height:14px;border-radius:7px;overflow:hidden;background:var(--line);gap:2px}
+.sbar i{display:block;height:100%}
+.slg{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);margin-top:8px}
+.slg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
 .tbl tr.click{cursor:pointer}
 .tbl tr.click:hover td{background:var(--accent-soft)}
 .card-b.flush .tbl{border-style:hidden}
@@ -500,7 +513,7 @@ function agg(S,m){
   const r=monthEntries(S,m);
   const z=()=>({A:0,B:0,J:0,T:0,X:0});
   const extraSet=new Set(S.settings.cats.extraIncome||[]),bonusSet=new Set(S.settings.cats.bonus||[]);
-  const a={m,extra:z(),extraCats:{},bonus:z(),inc:z(),exp:z(),sav:z(),rep:z(),fixed:0,variable:0,daily:0,event:0,shared:0,personal:0,transfer:0,
+  const a={m,extra:z(),extraCats:{},bonus:z(),inc:z(),exp:z(),sav:z(),rep:z(),fixed:0,variable:0,daily:0,event:0,dFixed:0,dVar:0,inst:0,instN:0,shared:0,personal:0,transfer:0,
     expCats:{},evCats:{},evByEvent:{},incCats:{},savCats:{},repCats:{},provisional:0,r};
   const add=(o,u,v)=>{o.T+=v;if(u==='A'||u==='B'||u==='J')o[u]+=v;else o.X+=v};
   for(const e of r.entries){
@@ -511,8 +524,9 @@ function agg(S,m){
     else if(e.type==='지출'){
       add(a.exp,e.user,v);
       if(e.nature==='고정')a.fixed+=v;else a.variable+=v;
-      if(e.event==='일상'){a.daily+=v;a.expCats[e.cat]=(a.expCats[e.cat]||0)+v}
+      if(e.event==='일상'){a.daily+=v;a.expCats[e.cat]=(a.expCats[e.cat]||0)+v;if(e.nature==='고정')a.dFixed+=v;else a.dVar+=v}
       else{a.event+=v;a.evCats[e.cat]=(a.evCats[e.cat]||0)+v;a.evByEvent[e.event]=(a.evByEvent[e.event]||0)+v}
+      if(e.nature==='고정'&&((e.src==='fixed'&&e.ref&&e.ref.installment)||(e.src==='tx'&&e.ref&&e.ref.link&&(S.fixed||[]).some(f=>f.group===e.ref.link&&f.installment)))){a.inst+=v;a.instN++}
       if(e.share==='personal')a.personal+=v;else a.shared+=v;
     }
     else if(e.type==='저축·투자'){add(a.sav,e.user,v);a.savCats[e.cat]=(a.savCats[e.cat]||0)+v}
@@ -895,8 +909,9 @@ function consultText(range,detail){
   L.push(`작성일 ${todayIso()} · 기간 ${mIso(months[0])} ~ ${mIso(months[nm-1])} (${nm}개월) · 금액 단위: 원`);
   L.push(`가구: ${uname('A')}·${uname('B')} 부부 (2026년 9월 결혼) · 가계부 시작 ${mIso(minM()||months[0])}`);
   L.push('잔여 = 수입 − 지출 − 저축·투자 − 대출원금 상환 (통장 잔액 아님). 내부이체·카드대금 출금은 제외됨.');
-  L.push('','■ 월별 흐름','월 | 수입 | └기본 | └상여 | └추가소득 | 지출 | └고정 | └변동 | └이벤트 | 저축·투자 | 원금상환 | 잔여 | 저축률 | 기록 상태');
-  const row=(lab,f)=>[lab,f(a=>a.inc.T),f(baseInc),f(a=>a.bonus.T),f(a=>a.extra.T),f(a=>a.exp.T),f(a=>a.fixed),f(a=>a.variable),f(a=>a.event),f(a=>a.sav.T),f(a=>a.rep.T),f(a=>a.rest)];
+  L.push('지출 = 일상 고정 + 일상 변동 + 이벤트 (세 값을 더하면 지출 합계).');
+  L.push('','■ 월별 흐름','월 | 수입 | └기본 | └상여 | └추가소득 | 지출 | └일상 고정 | └일상 변동 | └이벤트 | 저축·투자 | 원금상환 | 잔여 | 저축률 | 기록 상태');
+  const row=(lab,f)=>[lab,f(a=>a.inc.T),f(baseInc),f(a=>a.bonus.T),f(a=>a.extra.T),f(a=>a.exp.T),f(a=>a.dFixed),f(a=>a.dVar),f(a=>a.event),f(a=>a.sav.T),f(a=>a.rep.T),f(a=>a.rest)];
   A.forEach(a=>L.push([...row(mIso(a.m),g=>W(g(a))),pct(a.saveRate),a.empty?'기록 없음':(a.r.missing.length?`미입력 ${a.r.missing.length}건`:'입력 완료')].join(' | ')));
   if(nm>1){const ti=sumF(a=>a.inc.T),ts=sumF(a=>a.sav.T);L.push([...row('합계',g=>W(sumF(g))),ti?pct(ts/ti):'–',''].join(' | '));L.push([...row('월평균',g=>avg(sumF(g))),'',''].join(' | '))}
   // 일상 지출 카테고리
@@ -1079,7 +1094,7 @@ function briefCard(a,p){
   // 고정·변동, 할부
   const inst=r.entries.filter(e=>e.type==='지출'&&((e.src==='fixed'&&e.ref.installment)||(e.src==='tx'&&e.ref.link&&S.fixed.some(f=>f.group===e.ref.link&&f.installment))));
   const instT=inst.reduce((s,e)=>s+e.amount,0);
-  L.push(['고정·변동',`고정지출 ${W(a.fixed)}(${pct(a.fixed/(a.exp.T||1))}), 변동지출 ${W(a.variable)}.${inst.length?` 이 중 할부 ${inst.length}건 ${won(instT)}원.`:''}`]);
+  L.push(['고정·변동',`일상 생활비 ${W(a.daily)} = 고정 ${W(a.dFixed)} + 변동 ${W(a.dVar)}.${inst.length?` 고정 중 할부 ${inst.length}건 ${won(instT)}원.`:''}`]);
   // 수입
   const bonusSet=new Set(S.settings.cats.bonus||[]),extraSet=new Set(S.settings.cats.extraIncome||[]);
   const base=Object.entries(a.incCats).filter(([n])=>!bonusSet.has(n)&&!extraSet.has(n)).reduce((s,[,v])=>s+v,0);
@@ -1103,10 +1118,23 @@ function personCard(a){
   <div class="card-b" style="padding-top:8px"><p class="note" style="margin:0">부모님 이자는 ${esc(uname(S.settings.parents.person))} 수입, 추가 예치는 ${esc(uname(S.settings.parents.person))} 저축으로 집계됩니다.</p></div></section>`;
 }
 function structureCard(a,p){
-  const rows=[['고정지출',a.fixed,p.fixed,'정기항목 중 고정'],['변동지출',a.variable,p.variable,'그 외 지출'],['일상 생활비',a.daily,p.daily,'이벤트 제외 · 평소 생활비'],['이벤트 지출',a.event,p.event,Object.keys(a.evByEvent).join('·')||'결혼·신혼여행 등'],...(S.settings.useShare?[['공동생활비',a.shared,p.shared,''],['개인지출',a.personal,p.personal,'']]:[])];
-  return `<section class="card"><div class="card-h"><h2>지출 구조</h2><span class="sub">단위: 원</span></div><div class="card-b flush tw"><table class="tbl"><thead><tr><th>구분</th><th>이번 달</th><th>비중</th><th>전월</th><th>증감</th></tr></thead><tbody>
-  ${rows.map(([l,v,pv,n],i)=>`<tr${i===2?' class="hl"':''}><td class="rowh">${l}${n?`<span class="sub" style="display:block;font-weight:400;font-size:12px">${esc(n)}</span>`:''}</td><td class="n">${won(v)}</td><td class="n">${a.exp.T?pct(v/a.exp.T):'–'}</td><td class="n">${p.empty?'–':won(pv)}</td><td class="n ${v-pv>0?'neg':v-pv<0?'pos':''}">${p.empty?'–':sgn(v-pv)}</td></tr>`).join('')}
-  <tr class="total"><td>지출 합계</td><td class="n">${won(a.exp.T)}</td><td class="n">${a.exp.T?'100%':'–'}</td><td class="n">${p.empty?'–':won(p.exp.T)}</td><td class="n">${p.empty?'–':sgn(a.exp.T-p.exp.T)}</td></tr></tbody></table></div></section>`;
+  const T=a.exp.T,pe=p.empty;
+  const instRow=a.inst||(!pe&&p.inst);
+  const rows=[
+    {l:'일상 생활비',n:'평소에 쓰는 돈',v:a.daily,pv:p.daily,cls:'sec'},
+    {l:'고정지출',n:'대출이자·관리비·구독·할부 등',v:a.dFixed,pv:p.dFixed,cls:'subrow',dot:'var(--save)'},
+    ...(instRow?[{l:'그중 할부',n:a.instN?`${a.instN}건`:'',v:a.inst,pv:p.inst,cls:'subrow sub2',noPct:1}]:[]),
+    {l:'변동지출',n:'장보기·외식·쇼핑 등',v:a.dVar,pv:p.dVar,cls:'subrow',dot:'var(--repay)'},
+    {l:'이벤트 지출',n:(Object.keys(a.evByEvent).join('·')||'결혼·이사·여행 등')+' · 생활비와 별도',v:a.event,pv:p.event,cls:'sec',dot:'var(--event)'},
+    ...(S.settings.useShare?[{l:'공동생활비',n:'참고',v:a.shared,pv:p.shared,cls:'subrow'},{l:'개인지출',n:'참고',v:a.personal,pv:p.personal,cls:'subrow'}]:[])];
+  const seg=(v,c,l)=>v>0&&T>0?`<i style="width:${(v/T*100).toFixed(2)}%;background:${c}" title="${l} ${won(v)}원"></i>`:'';
+  const bar=T>0?`<div class="sbar">${seg(a.dFixed,'var(--save)','고정지출')}${seg(a.dVar,'var(--repay)','변동지출')}${seg(a.event,'var(--event)','이벤트 지출')}</div>
+    <div class="slg"><span><i style="background:var(--save)"></i>고정 ${pct(a.dFixed/T)}</span><span><i style="background:var(--repay)"></i>변동 ${pct(a.dVar/T)}</span>${a.event?`<span><i style="background:var(--event)"></i>이벤트 ${pct(a.event/T)}</span>`:''}</div>`:'';
+  return `<section class="card"><div class="card-h"><h2>지출 구조</h2><span class="sub">단위: 원</span></div>
+  <div class="card-b sform"><div class="formula">지출 합계 = <b>일상 생활비</b> (고정 + 변동) + <b>이벤트 지출</b></div>${bar}</div>
+  <div class="card-b flush tw"><table class="tbl stbl"><thead><tr><th>구분</th><th>이번 달</th><th class="hide-sm">비중</th><th class="hide-sm">전월</th><th>증감</th></tr></thead><tbody>
+  ${rows.map(r=>`<tr class="${r.cls}"><td class="rowh">${r.dot?`<i class="sdot" style="background:${r.dot}"></i>`:''}${r.l}${r.n?`<span class="sn">${esc(r.n)}</span>`:''}</td><td class="n">${won(r.v)}</td><td class="n hide-sm">${r.noPct||!T?'':pct(r.v/T)}</td><td class="n hide-sm">${pe?'–':won(r.pv)}</td><td class="n ${r.v-r.pv>0?'neg':r.v-r.pv<0?'pos':''}">${pe?'–':sgn(r.v-r.pv)}</td></tr>`).join('')}
+  <tr class="total"><td>지출 합계</td><td class="n">${won(T)}</td><td class="n hide-sm">${T?'100%':'–'}</td><td class="n hide-sm">${pe?'–':won(p.exp.T)}</td><td class="n">${pe?'–':sgn(T-p.exp.T)}</td></tr></tbody></table></div></section>`;
 }
 const catOpen=new Set();
 function categoryCard(a,p){
