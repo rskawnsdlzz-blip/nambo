@@ -354,6 +354,24 @@ table.grid{border-collapse:separate;border-spacing:0;width:100%;min-width:1140px
 .grid tr.bad td.st{color:var(--bad);font-weight:600}
 .grid tr.ok td.st{color:var(--ok);font-weight:600}
 .grid tr.dup td{background:#FFF6DC}
+.lq{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.lq-now{background:color-mix(in srgb,var(--income) 16%,transparent);color:var(--income)}
+.lq-sell{background:color-mix(in srgb,var(--save) 16%,transparent);color:var(--save)}
+.lq-locked{background:color-mix(in srgb,var(--faint) 22%,transparent);color:var(--muted)}
+.lqs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:560px){.lqs{grid-template-columns:1fr}}
+.lqc{border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface2)}
+.lqc-now{border-color:color-mix(in srgb,var(--income) 45%,var(--line))}.lqc-sell{border-color:color-mix(in srgb,var(--save) 45%,var(--line))}
+.lqt{font-size:13px;font-weight:600;color:var(--muted)}
+.lqv{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums;margin-top:4px}.lqv small{font-size:12px;font-weight:600;color:var(--muted);margin-left:2px}
+.lqd{font-size:12px;color:var(--muted);margin-top:2px}
+.lqsum{margin-top:10px;font-size:14px;color:var(--muted)}.lqsum b{color:var(--ink);font-size:16px;margin-left:6px}
+.asort{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}.asort>span{font-size:13px;color:var(--muted);font-weight:600}
+.asort .seg button{font-size:13px;padding:6px 10px}
+.atbl tr.lqhead td{background:var(--surface2);font-weight:700;border-top:2px solid var(--line-strong)}
+.atbl .lqhl{text-align:left}
+.show-sm{display:none}@media (max-width:560px){.atbl .sn.show-sm{display:block}.atbl td.rowh{white-space:normal}}
+.atbl .sn{display:block;font-weight:400;font-size:12px;color:var(--muted)}
 .pies{display:grid;grid-template-columns:1fr;gap:0}
 @media (min-width:760px){.pies{grid-template-columns:1fr 1fr}.pies>.pie+.pie{border-left:1px solid var(--line)}}
 @media (max-width:759px){.pies>.pie+.pie{border-top:1px solid var(--line)}}
@@ -426,7 +444,7 @@ const DEFAULTS={
   methods:['본인 급여통장','아내 급여통장','본인 신용카드','아내 신용카드','본인 체크카드','아내 체크카드','공동 통장','현금','기타'],
   events:['일상','결혼','신혼여행','기타이벤트'],
   assetKinds:['예금·입출금','적금','투자','보증금','기타자산'],
-  parents:{rate:0.01,rule:'',person:'B'},
+  parents:{rate:0.01,rule:'',person:'B',liq:'locked'},
   estimateMissing:false,
   startMonth:202609,
   useShare:false,
@@ -1660,10 +1678,46 @@ function assetPies(rows,totA,totD){
   const two=`<div class="pie"><h3>순자산 구성 — 어디에 있나</h3>${donutSvg(s2,note?'자산':'순자산',eok(t2))}${legend(s2,t2)}${note?`<p class="pnote">${esc(note)}</p>`:by.get('부동산')?.gross!=null?'<p class="pnote">부동산은 대출을 뺀 금액(내 몫)으로 넣었습니다.</p>':''}</div>`;
   return totA>0?`<section class="card"><div class="card-h"><h2>한눈에 보기</h2></div><div class="pies">${one}${two}</div></section>`:'';
 }
+/* 꺼내 쓸 수 있는 정도 */
+const LIQ=[['now','바로 쓸 수 있음','입출금·파킹통장·CMA·현금'],['sell','팔면 쓸 수 있음','주식·ISA·펀드 — 며칠 걸리고 값이 변함'],['locked','묶여 있음','청약·청년적금·연금·부동산 등']];
+const LIQS={now:'바로',sell:'팔면',locked:'묶임'};
+function liqOf(a){
+  if(a.auto)return S.settings.parents.liq||'locked';
+  if(a.liq)return a.liq;
+  const t=`${a.kind||''} ${a.name||''}`;
+  if(/청약|도약|미래적금|적금|연금|irp|보증금|부동산|아파트|주택|토지|오피스텔|빌라/i.test(t))return 'locked';
+  if(/주식|isa|펀드|etf|코인|채권|투자|증권/i.test(t))return 'sell';
+  return 'now';
+}
+const liqRank={now:0,sell:1,locked:2};
+const liqBadge=l=>`<span class="lq lq-${l}">${LIQS[l]}</span>`;
+let assetSort=lsGet('assetSort','liq');
+function sortAssets(rows,k){
+  const amt=a=>+a.amount||0,byAmt=(a,b)=>amt(b)-amt(a);
+  const r=[...rows];
+  if(k==='amount')return r.sort(byAmt);
+  if(k==='kind')return r.sort((a,b)=>(a.kind||'').localeCompare(b.kind||'')||byAmt(a,b));
+  if(k==='owner'){const o={A:0,B:1,J:2};return r.sort((a,b)=>((o[a.owner]??3)-(o[b.owner]??3))||byAmt(a,b))}
+  return r.sort((a,b)=>liqRank[liqOf(a)]-liqRank[liqOf(b)]||byAmt(a,b));
+}
+function liqStrip(rows){
+  const t={now:0,sell:0,locked:0};rows.forEach(a=>t[liqOf(a)]+=+a.amount||0);
+  const cell=([k,l,d])=>`<div class="lqc lqc-${k}"><div class="lqt">${liqBadge(k)} ${l}</div><div class="lqv">${won(t[k])}<small>원</small></div><div class="lqd">${d}</div></div>`;
+  return `<div class="lqs">${LIQ.map(cell).join('')}</div><div class="lqsum">꺼내 쓸 수 있는 돈 (바로 + 팔면) <b>${won(t.now+t.sell)}원</b></div>`;
+}
+function assetRows(sorted,stale){
+  let h='',prev=null;
+  for(const a of sorted){const l=liqOf(a);
+    if(assetSort==='liq'&&l!==prev){const sub=sorted.filter(x=>liqOf(x)===l).reduce((s,x)=>s+(+x.amount||0),0);const L=LIQ.find(x=>x[0]===l);
+      h+=`<tr class="lqhead"><td colspan="2" class="lqhl">${liqBadge(l)} ${L[1]}</td><td class="hide-sm"></td><td class="hide-sm"></td><td class="n">${won(sub)}</td><td colspan="2" class="hide-sm"></td></tr>`;prev=l}
+    h+=`<tr class="${a.auto?'':'click'}" ${a.auto?'':`data-aedit="${a.id}" tabindex="0"`}><td class="c">${liqBadge(l)}</td><td class="rowh">${esc(a.name)}<span class="sn show-sm">${esc(a.kind)} · ${esc(uname(a.owner))}</span>${a.auto?'<span class="sn">부모님 예치 메뉴에서 관리</span>':''}</td><td class="c hide-sm">${esc(a.kind)}</td><td class="c hide-sm">${esc(uname(a.owner))}</td><td class="n">${a.amount===''||a.amount==null?'–':won(a.amount)}</td><td class="c mono hide-sm" style="font-size:13px">${esc(a.asOf||'–')}</td><td class="c hide-sm">${stale(a)}</td></tr>`}
+  return h;
+}
 function vAssets(){
   const endD=(()=>{const y=Math.floor(curM/100),m=curM%100;const d=new Date(y,m,0);return `${y}-${String(m).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`})();
   const p=parentsMonth(S,curM);const td=todayIso();
-  const rows=[{auto:true,kind:'부모님 예치',name:'부모님께 맡긴 원금',owner:S.settings.parents.person,amount:p.held,asOf:endD},...[...S.assets].sort((a,b)=>(a.kind||'').localeCompare(b.kind||''))];
+  const rows=[{auto:true,kind:'부모님 예치',name:'부모님께 맡긴 원금',owner:S.settings.parents.person,amount:p.held,asOf:endD},...S.assets];
+  const sorted=sortAssets(rows,assetSort);
   const stale=a=>a.auto?'<span class="badge b-auto">자동</span>':(a.amount==null||a.amount==='')?'<span class="badge b-bad">금액 미입력</span>':!a.asOf?'<span class="badge b-bad">기준일 없음</span>':daysBetween(a.asOf,td)>S.settings.staleDays?`<span class="badge b-warn">갱신 필요 (${daysBetween(a.asOf,td)}일)</span>`:'<span class="badge b-ok">최신</span>';
   const totA=rows.reduce((s,a)=>s+(+a.amount||0),0);
   const drows=S.debts.map(d=>({d,e:debtEstimate(S,d,curM)}));
@@ -1672,17 +1726,21 @@ function vAssets(){
   return `<div class="stack">${banners()}<div><div class="eyebrow">자산현황 · ${mLabel(curM)} 말 기준</div><h1>총자산 · 총부채 · 순자산</h1><p class="sub">직접 입력한 금액은 <b>기준일</b>의 잔액입니다. 은행·증권 앱에서 확인한 날짜와 함께 갱신하세요.</p></div>
   <div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">${kpi('총자산',won(totA),missA?`금액 미입력 ${missA}건 제외`:'자동 + 직접 입력','--income')}${kpi('총부채',won(totD),'대출 추정 잔액','--expense')}${kpi('순자산',won(totA-totD),'총자산 − 총부채',null,true)}</div>
   ${assetPies(rows,totA,totD)}
-  <section class="card"><div class="card-h"><h2>자산</h2><span class="spacer"></span><button class="btn small primary" id="aAdd" ${canWrite?'':'disabled'}>+ 자산</button></div><div class="card-b flush tw"><table class="tbl"><thead><tr><th>구분</th><th>항목</th><th>소유</th><th>금액(원)</th><th>기준일</th><th>상태</th></tr></thead><tbody>
-  ${rows.map(a=>`<tr class="${a.auto?'':'click'}" ${a.auto?'':`data-aedit="${a.id}" tabindex="0"`}><td class="c">${esc(a.kind)}</td><td class="rowh">${esc(a.name)}</td><td class="c">${esc(uname(a.owner))}</td><td class="n">${a.amount===''||a.amount==null?'–':won(a.amount)}</td><td class="c mono" style="font-size:13px">${esc(a.asOf||'–')}</td><td class="c">${stale(a)}</td></tr>`).join('')}
-  <tr class="total"><td colspan="3">자산 합계</td><td class="n">${won(totA)}</td><td colspan="2"></td></tr></tbody></table></div></section>
+  <section class="card"><div class="card-h"><h2>자산</h2><span class="spacer"></span><button class="btn small primary" id="aAdd" ${canWrite?'':'disabled'}>+ 자산</button></div>
+  <div class="card-b">${liqStrip(rows)}
+  <div class="asort"><span>정렬</span><div class="seg" role="group" aria-label="자산 정렬">${[['liq','꺼내 쓰기 쉬운 순'],['amount','금액 큰 순'],['kind','구분별'],['owner','소유자별']].map(([k,l])=>`<button type="button" data-asort="${k}" aria-pressed="${assetSort===k}">${l}</button>`).join('')}</div></div></div>
+  <div class="card-b flush tw"><table class="tbl atbl"><thead><tr><th>꺼내 쓰기</th><th>항목</th><th class="hide-sm">구분</th><th class="hide-sm">소유</th><th>금액(원)</th><th class="hide-sm">기준일</th><th class="hide-sm">상태</th></tr></thead><tbody>
+  ${assetRows(sorted,stale)}
+  <tr class="total"><td colspan="2">자산 합계</td><td class="hide-sm"></td><td class="hide-sm"></td><td class="n">${won(totA)}</td><td colspan="2" class="hide-sm"></td></tr></tbody></table></div>
+  <div class="card-b" style="padding-top:8px"><p class="note" style="margin:0">'꺼내 쓰기'는 구분과 이름으로 자동 분류됩니다. 다르면 항목을 눌러 직접 고르세요. 부모님 예치금은 부모님 예치 메뉴의 설정에서 바꿀 수 있습니다.</p></div></section>
   <section class="card"><div class="card-h"><h2>부채</h2><span class="spacer"></span><button class="btn small primary" id="dAdd" ${canWrite?'':'disabled'}>+ 부채</button></div><div class="card-b flush tw"><table class="tbl"><thead><tr><th>항목</th><th>기준 잔액</th><th>기준일</th><th>이후 원금상환</th><th>추정 잔액</th></tr></thead><tbody>
   ${drows.length?drows.map(({d,e})=>`<tr class="click" data-dedit="${d.id}" tabindex="0"><td class="rowh">${esc(d.name)}<span class="sub" style="display:block;font-weight:400;font-size:12px">연결: ${esc(d.cat||'–')}</span></td><td class="n">${d.base==null?'–':won(d.base)}</td><td class="c mono" style="font-size:13px">${esc(d.asOf||'–')}</td><td class="n">${e?won(e.paid):'–'}</td><td class="n"><b>${e?won(e.est):'–'}</b> ${e?'<span class="badge b-auto">추정</span>':'<span class="badge b-bad">입력 필요</span>'}</td></tr>`).join(''):'<tr><td colspan="5" class="c" style="color:var(--muted)">등록된 부채가 없습니다 — 주택담보대출 잔액을 기준일과 함께 등록하세요</td></tr>'}
   <tr class="total"><td colspan="4">부채 합계</td><td class="n">${won(totD)}</td></tr></tbody></table></div><div class="card-b"><p class="note" style="margin:0">추정 잔액 = 기준 잔액 − 기준일 이후 ${mLabel(curM)}까지 기록된 원금 상환. 기준일이 속한 달의 정기 상환은 기준 잔액에 이미 반영된 것으로 봅니다.</p></div></section></div>`;
 }
 function openAsset(a){
-  const isNew=!a;openSheet({title:isNew?'자산 추가':'자산 수정',values:a?{...a}:{kind:'예금·입출금',name:'',owner:me(),amount:'',asOf:todayIso(),memo:''},
-    fields:[{k:'kind',label:'구분',type:'select',req:true,options:S.settings.assetKinds},{k:'name',label:'항목명',type:'text',req:true},{k:'owner',label:'소유',type:'seg',req:true,options:userOpts()},{k:'amount',label:'잔액·평가액(원)',type:'won',req:true},{k:'asOf',label:'기준일',type:'date',req:true},{k:'memo',label:'메모',type:'text'}],
-    onSave:async x=>{const id=a?.id||newId('assets');await put('assets',id,{kind:x.kind,name:x.name,owner:x.owner,amount:+x.amount,asOf:x.asOf,memo:x.memo||''})},onDelete:isNew?null:async()=>del('assets',a.id)});
+  const isNew=!a;openSheet({title:isNew?'자산 추가':'자산 수정',values:a?{liq:'',...a}:{kind:'예금·입출금',name:'',owner:me(),amount:'',asOf:todayIso(),liq:'',memo:''},
+    fields:[{k:'kind',label:'구분',type:'select',req:true,options:S.settings.assetKinds},{k:'name',label:'항목명',type:'text',req:true},{k:'owner',label:'소유',type:'seg',req:true,options:userOpts()},{k:'amount',label:'잔액·평가액(원)',type:'won',req:true},{k:'asOf',label:'기준일',type:'date',req:true},{k:'liq',label:'꺼내 쓸 수 있나',type:'seg',options:[['','자동'],['now','바로'],['sell','팔면'],['locked','묶임']],full:true,hint:'자동: 구분·이름으로 판단 (청약·적금·부동산은 묶임, 주식·ISA는 팔면, 입출금은 바로)'},{k:'memo',label:'메모',type:'text'}],
+    onSave:async x=>{const id=a?.id||newId('assets');await put('assets',id,{kind:x.kind,name:x.name,owner:x.owner,amount:+x.amount,asOf:x.asOf,liq:x.liq||'',memo:x.memo||''})},onDelete:isNew?null:async()=>del('assets',a.id)});
 }
 function openDebt(d){
   const isNew=!d;openSheet({title:isNew?'부채 추가':'부채 수정',values:d?{...d}:{name:'주택담보대출',base:'',asOf:todayIso(),cat:'주담대 원금',memo:''},
@@ -1889,12 +1947,14 @@ function bindCommon(v){
   on('#addFixed',()=>openFixed(null));on('#addMonthly',()=>openMonthly(null));
   on('#pAdd',()=>openParent(null));on('#aAdd',()=>openAsset(null));on('#dAdd',()=>openDebt(null));
   on('#evAdd',()=>openTx({type:'지출',event:evSel,date:defDate(curM),user:me(),share:'shared'}));
-  on('#pSet',()=>{const ps=S.settings.parents;openSheet({title:'부모님 예치 계산 기준',values:{rate:+(ps.rate*100).toFixed(4),rule:ps.rule||'',person:ps.person},
+  on('#pSet',()=>{const ps=S.settings.parents;openSheet({title:'부모님 예치 계산 기준',values:{rate:+(ps.rate*100).toFixed(4),rule:ps.rule||'',person:ps.person,liq:ps.liq||'locked'},
     fields:[{k:'rate',label:'월 이율 (%)',type:'num',req:true,hint:'1%는 1로 입력합니다. 원금 40,000,000원 × 1% = 월 400,000원.',check:v=>v>=10?'월 이율이 10% 이상입니다. 1%라면 1을 입력하세요.':''},
       {k:'rule',label:'추가 예치 이자 적용',type:'seg',options:[['','미정'],['same','예치한 달부터'],['next','다음 달부터']],full:true},
-      {k:'person',label:'담당자',type:'seg',req:true,options:[['A',uname('A')],['B',uname('B')]]}],
-    onSave:async x=>{const next=JSON.parse(JSON.stringify(S.settings));next.parents={rate:(+x.rate)/100,rule:x.rule,person:x.person};await saveSettings(next)}})});
+      {k:'person',label:'담당자',type:'seg',req:true,options:[['A',uname('A')],['B',uname('B')]]},
+      {k:'liq',label:'자산현황에서 꺼내 쓰기',type:'seg',options:[['locked','묶임'],['sell','팔면'],['now','바로']],full:true}],
+    onSave:async x=>{const next=JSON.parse(JSON.stringify(S.settings));next.parents={rate:(+x.rate)/100,rule:x.rule,person:x.person,liq:x.liq||'locked'};await saveSettings(next)}})});
   v.querySelectorAll('[data-pedit]').forEach(el=>{const go=()=>openParent(S.parents.find(x=>x.id===el.dataset.pedit));el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter')go()}});
+  v.querySelectorAll('[data-asort]').forEach(b=>b.onclick=()=>{assetSort=b.dataset.asort;lsSet('assetSort',assetSort);keepFocus(render)});
   v.querySelectorAll('[data-aedit]').forEach(el=>{const go=()=>openAsset(S.assets.find(x=>x.id===el.dataset.aedit));el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter')go()}});
   v.querySelectorAll('[data-dedit]').forEach(el=>{const go=()=>openDebt(S.debts.find(x=>x.id===el.dataset.dedit));el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter')go()}});
   v.querySelectorAll('[data-ev]').forEach(b=>b.onclick=()=>{evSel=b.dataset.ev;render()});
